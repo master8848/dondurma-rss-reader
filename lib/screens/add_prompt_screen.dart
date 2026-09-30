@@ -17,18 +17,26 @@ import 'package:flutter/material.dart';
 import '../promptlib/prompt_doc.dart';
 import '../promptlib/ui/library_controller.dart';
 
-/// Creates a new prompt, or edits [existing] (subscribed docs are forked to
-/// `library/` first so the subscription mirror is never mutated).
+/// Creates a new prompt, or edits [existing] (offline `subscriptions/`
+/// mirrors save back to the SAME file via [LibraryController.saveInPlace];
+/// non-offline docs keep the fork-then-save path so the subscription mirror
+/// is never mutated by a library edit).
 class AddPromptScreen extends StatefulWidget {
   final LibraryController controller;
   final String initialText;
   final PromptDoc? existing;
+
+  /// True when [existing] lives under `subscriptions/` (resolve via
+  /// `LibraryController.isOffline`). Offline edits save in place — no fork,
+  /// no duplicate — so git sync picks up the change.
+  final bool isOffline;
 
   const AddPromptScreen({
     super.key,
     required this.controller,
     this.initialText = '',
     this.existing,
+    this.isOffline = false,
   });
 
   @override
@@ -82,16 +90,27 @@ class _AddPromptScreenState extends State<AddPromptScreen> {
           body: _body.text,
         ));
       } else {
-        // Fork-on-edit for subscribed items; plain save for library items
-        // (forkToLibrary is idempotent, so calling it unconditionally is
-        // safe and keeps this screen free of scope-tracking logic).
-        final PromptDoc forked =
-            await widget.controller.forkToLibrary(existing.id);
-        await widget.controller.save(forked.copyWith(
-          title: _title.text.trim(),
-          tags: _tagList,
-          body: _body.text,
-        ));
+        // Offline edit: save back to the SAME mirror file (no fork, no
+        // duplicate) so git sync picks up the change. Otherwise fork-on-edit
+        // for subscribed items; plain save for library items
+        // (forkToLibrary is idempotent, so calling it unconditionally for
+        // non-offline docs is safe and keeps this screen free of
+        // scope-tracking logic).
+        if (widget.isOffline) {
+          await widget.controller.saveInPlace(existing.copyWith(
+            title: _title.text.trim(),
+            tags: _tagList,
+            body: _body.text,
+          ));
+        } else {
+          final PromptDoc forked =
+              await widget.controller.forkToLibrary(existing.id);
+          await widget.controller.save(forked.copyWith(
+            title: _title.text.trim(),
+            tags: _tagList,
+            body: _body.text,
+          ));
+        }
       }
       if (mounted) Navigator.of(context).pop();
     } catch (e) {

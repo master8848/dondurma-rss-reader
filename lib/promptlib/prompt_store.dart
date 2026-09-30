@@ -5,8 +5,9 @@
 ///   Only ever written by [save] / [forkToLibrary].
 /// * `<root>/subscriptions/<feed>/*.md` — fetched items mirrored by
 ///   [materializeSubscribedItem]. This side never overwrites `library/`;
-///   editing a subscribed item forks it into `library/` ([forkToLibrary])
-///   while the `source_feed` link is preserved.
+///   explicit copies go through [forkToLibrary] (same id, `source_feed`
+///   preserved, reads favour `library/`), while [saveInPlace] edits the
+///   mirror file itself so offline changes sync via git.
 ///
 /// Divergence note vs ARCHITECTURE.md section 1: the pseudocode there takes
 /// a `FeedItem` in `materializeSubscribedItem`. `FeedItem` lives in
@@ -47,6 +48,7 @@ import 'dart:io';
 import 'feed_config.dart';
 import 'front_matter.dart' as fm;
 import 'git_service.dart';
+import 'offline_marking.dart' show isOfflineFilePath;
 import 'prompt_doc.dart';
 import 'repo_mapping.dart';
 
@@ -69,6 +71,33 @@ class DuplicateIdException implements Exception {
 }
 
 enum _Scope { library, prompt, subscription }
+
+/// One parsed doc holding an id, with its scope resolved.
+///
+/// Returned by [PromptStore.scopedDocsForId] so sync/version UI can compare
+/// the user's copy against the subscription mirror without re-scanning the
+/// filesystem itself.
+class PromptScopeDoc {
+  /// Absolute file path holding the doc.
+  final String path;
+
+  /// The parsed doc.
+  final PromptDoc doc;
+
+  /// True for `library/` files (the user's own copy).
+  final bool isLibrary;
+
+  /// True for `subscriptions/<feed>/` mirror files (last fetched state).
+  final bool isSubscription;
+
+  /// `prompts/<category>/` files are neither library nor subscription.
+  const PromptScopeDoc({
+    required this.path,
+    required this.doc,
+    required this.isLibrary,
+    required this.isSubscription,
+  });
+}
 
 class _Entry {
   final String path;
@@ -219,6 +248,95 @@ class PromptStore {
       if (best == null || _isNewer(e, best)) best = e;
     }
     return best?.path;
+  }
+
+  /// Every parsed doc holding [id], with its scope resolved
+  /// (`library/` vs `prompts/<category>/` vs `subscriptions/<feed>/`).
+  ///
+  /// Additive read-only helper for sync/version UI: the store's
+  /// latest-per-id reads ([getById]/[pathForId]) collapse scopes, but a
+  /// local-vs-remote verdict needs the user's copy *and* the subscription
+  /// mirror side by side. Malformed files stay skipped (see [skippedFiles]).
+  Future<List<PromptScopeDoc>> scopedDocsForId(String id) async {
+    final List<_Entry> all = await _collectAll();
+    final List<PromptScopeDoc> out = <PromptScopeDoc>[];
+    for (final _Entry e in all) {
+      if (e.doc.id != id) continue;
+      out.add(PromptScopeDoc(
+        path: e.path,
+        doc: e.doc,
+        isLibrary: e.scope == _Scope.library,
+        isSubscription: e.scope == _Scope.subscription,
+      ));
+    }
+    out.sort((PromptScopeDoc a, PromptScopeDoc b) =>
+        a.path.compareTo(b.path));
+    return out;
+  }
+
+  /// True when [id]'s resolved file lives under `subscriptions/`.
+  ///
+  /// Offline is a location state, not a type: backed by subscriptions-scope
+  /// membership of the exact id lookup ([pathForId], same rule as
+  /// [isOfflineFilePath]). Unknown ids are not offline; an id forked into
+  /// `library/` resolves there, so it is not offline either.
+  Future<bool> isOffline(String id) async {
+    return isOfflineFilePath(await pathForId(id), libraryRoot);
+  }
+
+  /// Exact id lookup (same scan as [pathForId]) returning both the resolved
+  /// file path and its offline state. Prefer this over separate [pathForId]
+  /// + [isOffline] calls in row builders to avoid scanning twice per row.
+  /// File location still resolves through the [pathForId] rule; the
+  /// prediction fallback for unmaterialized paths is `promptFilePath`
+  /// (`prompt_paths.dart`), which covers `subscriptions/<slug>/` mirrors.
+  Future<({String? path, bool isOffline})> fileStateFor(String id) async {
+    final String? path = await pathForId(id);
+    if (path == null) return (path: null, isOffline: false);
+    return (path: path, isOffline: isOfflineFilePath(path, libraryRoot));
+  }
+
+  /// Edits a doc back to its SAME file (any scope): no fork, no duplicate.
+  ///
+  /// Finds the latest file holding [doc.id] (same resolution as [pathForId])
+  /// and rewrites it in place with `version` bumped by one (same rule as
+  /// [save]). Offline (`subscriptions/`) edits land in the mirror file
+  /// itself so git sync picks them up. Unknown ids fall back to [save] (a
+  /// new `library/` file). Best-effort [GitService.autoCommit] afterwards;
+  /// git failures never break the save.
+  Future<PromptDoc> saveInPlace(PromptDoc doc) async {
+    if (doc.id.trim().isEmpty) {
+      throw ArgumentError('promptlib: cannot save a doc with an empty id');
+    }
+    final List<_Entry> all = await _collectAll();
+    final List<_Entry> owned =
+        all.where((_Entry e) => e.doc.id == doc.id).toList();
+    owned.sort(_compareEntries);
+    if (owned.isEmpty) return save(doc);
+
+    final _Entry latest = owned.last;
+    final int disk = latest.doc.version;
+    final int version = doc.version > disk ? doc.version : disk + 1;
+
+    final DateTime now = DateTime.now().toUtc();
+    final PromptDoc saved = doc.copyWith(
+      created: () => doc.created ?? latest.doc.created ?? now,
+      updated: () => now,
+      version: version,
+    );
+    await File(latest.path).writeAsString(fm.serialize(saved));
+    await _scan();
+
+    final GitService? git = _git;
+    if (git != null) {
+      try {
+        final String name = latest.path.split(Platform.pathSeparator).last;
+        await git.autoCommit('promptlib: save $name');
+      } catch (_) {
+        // Best-effort: local-only degradation when git is missing/broken.
+      }
+    }
+    return saved;
   }
 
   /// Writes [doc] to `library/<slug>.md` and returns the saved doc
@@ -531,6 +649,12 @@ class PromptStore {
   /// same feed rewrites that feed's mirror file; the same id arriving in a
   /// *different* feed writes a separate namespaced file (read favours
   /// `library/` first).
+  ///
+  /// Identical refreshes skip the write: when the existing mirror already
+  /// carries the same id/title/tags/body, it is returned as-is (no
+  /// `updated` re-stamp, no mtime churn, no git noise). Timestamps and
+  /// `version` are not content, so they never trigger a rewrite on their
+  /// own — sync UI compares content hashes, not mtimes.
   Future<PromptDoc> materializeSubscribedItem({
     required String feedSlug,
     required String id,
@@ -580,6 +704,19 @@ class PromptStore {
     String target;
     if (existing != null) {
       target = existing;
+      // Identical refresh: same words already on disk — keep the file (and
+      // its timestamps) untouched instead of re-stamping `updated: now`.
+      try {
+        final PromptDoc onDisk = fm.parse(await File(existing).readAsString());
+        if (onDisk.id == id &&
+            onDisk.title == (title.isEmpty ? 'Untitled' : title) &&
+            _sameTags(onDisk.tags, tags) &&
+            onDisk.body == body) {
+          return onDisk;
+        }
+      } catch (_) {
+        // Unreadable mirror: fall through and overwrite it below.
+      }
     } else {
       final String base =
           slugifyTitle(title.isEmpty ? id : title);
@@ -597,10 +734,12 @@ class PromptStore {
     return doc;
   }
 
-  /// Fork-on-edit: copies a subscribed doc into `library/` so edits never
-  /// mutate the subscription mirror. The copy keeps the same id (read
-  /// resolution favours `library/`) and preserves the `source_feed` link.
-  /// Idempotent: when the id already lives in `library/`, returns it.
+  /// Fork-on-copy: copies a subscribed doc into `library/` so the copy can
+  /// evolve independently of the subscription mirror. The copy keeps the
+  /// same id (read resolution favours `library/`) and preserves the
+  /// `source_feed` link. Idempotent: when the id already lives in `library/`,
+  /// returns it. For offline edits that stay in the mirror file itself
+  /// (no fork), see [saveInPlace].
   Future<PromptDoc> forkToLibrary(String id) async {
     final List<_Entry> entries = await _scan();
     for (final _Entry e in entries) {
@@ -728,6 +867,17 @@ class PromptStore {
   String _dirOf(String path) {
     final int i = path.lastIndexOf(Platform.pathSeparator);
     return i < 0 ? '.' : path.substring(0, i);
+  }
+
+  /// Order-sensitive tag equality for the identical-refresh skip in
+  /// [materializeSubscribedItem] (mirrors are written verbatim, so order is
+  /// stable; a reorder still counts as a change worth rewriting).
+  static bool _sameTags(List<String> a, List<String> b) {
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
   }
 
   String _stemOf(String path) {

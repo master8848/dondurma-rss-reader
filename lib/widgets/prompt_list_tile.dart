@@ -18,12 +18,19 @@ class PromptListTile extends StatelessWidget {
   /// resolves for every stored doc; the [OpenInButton] still hides itself
   /// when [filePath] is null or missing on disk.
   final String? filePath;
+
+  /// True when this doc's file lives under `subscriptions/` (offline-saved
+  /// article mirror — resolve via `LibraryController.isOffline(doc.id)`).
+  /// Shows a very small inline offline glyph in the trailing area; when
+  /// false NOTHING is rendered (no badge, no chip, no banner).
+  final bool isOffline;
   final VoidCallback? onTap;
 
   const PromptListTile({
     super.key,
     required this.doc,
     this.filePath,
+    this.isOffline = false,
     this.onTap,
   });
 
@@ -90,6 +97,21 @@ class PromptListTile extends StatelessWidget {
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // Offline marker — same glyph as the article rows' cached
+          // indicator (`Icons.offline_pin`): a tiny inline icon ONLY when
+          // the file lives under `subscriptions/`; nothing at all otherwise.
+          if (isOffline)
+            Tooltip(
+              message: 'Available offline',
+              child: Padding(
+                padding: const EdgeInsets.only(right: 2),
+                child: Icon(
+                  Icons.offline_pin,
+                  size: 13,
+                  color: cs.secondary.withValues(alpha: 0.7),
+                ),
+              ),
+            ),
           // "Open In" split button — every saved prompt maps to a file on
           // disk (library/, prompts/<category>/, subscriptions/<feed>/);
           // hidden by its own visibility rule when filePath is null/missing.

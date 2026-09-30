@@ -42,7 +42,7 @@ class PromptDetailScreen extends StatefulWidget {
 
 class _PromptDetailScreenState extends State<PromptDetailScreen> {
   Future<PromptDoc?>? _doc;
-  Future<String?>? _filePath;
+  Future<({String? path, bool isOffline})>? _fileState;
   Future<List<CommitInfo>>? _history;
 
   @override
@@ -51,34 +51,52 @@ class _PromptDetailScreenState extends State<PromptDetailScreen> {
     _doc = widget.controller.getById(widget.promptId);
     // Saved prompts always map to a file on disk (library/,
     // prompts/<category>/, subscriptions/<feed>/): prefer the explicit
-    // [filePath], else resolve the exact id-based path via the store
-    // (rename- and snapshot-proof). History scopes to the same file.
-    _filePath = _resolveFilePath();
+    // [filePath], else resolve the exact id-based path + offline state via
+    // the store (rename- and snapshot-proof). History scopes to the file.
+    _fileState = _resolveFileState();
     final GitService? git = widget.git;
     if (git != null) {
-      _history = _filePath!.then((String? p) => git.log(path: p, limit: 20));
+      _history = _fileState!.then(
+        (({String? path, bool isOffline}) s) =>
+            git.log(path: s.path, limit: 20),
+      );
     }
   }
 
-  /// Explicit `filePath` wins; otherwise the exact store lookup for this
-  /// prompt id. Never throws — unresolvable means "no file" (null), and the
-  /// [OpenInButton] hides itself.
-  Future<String?> _resolveFilePath() async {
+  /// Explicit `filePath` wins for location; otherwise the exact store lookup
+  /// for this prompt id (path + subscriptions-scope offline flag). Never
+  /// throws — unresolvable means "no file" (null), and the [OpenInButton]
+  /// hides itself.
+  Future<({String? path, bool isOffline})> _resolveFileState() async {
     final String? direct = widget.filePath;
-    if (direct != null && direct.trim().isNotEmpty) return direct;
+    if (direct != null && direct.trim().isNotEmpty) {
+      bool offline = false;
+      try {
+        offline = await widget.controller.isOffline(widget.promptId);
+      } catch (_) {}
+      return (path: direct, isOffline: offline);
+    }
     try {
-      return await widget.controller.pathForId(widget.promptId);
+      return await widget.controller.fileStateFor(widget.promptId);
     } catch (_) {
-      return null;
+      return (path: null, isOffline: false);
     }
   }
 
   Future<void> _openEdit(PromptDoc doc) async {
+    // Offline files edit in place (same path, no fork); everything else
+    // keeps the fork-on-edit path via AddPromptScreen.
+    bool offline = false;
+    try {
+      offline = await widget.controller.isOffline(widget.promptId);
+    } catch (_) {}
+    if (!mounted) return;
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => AddPromptScreen(
           controller: widget.controller,
           existing: doc,
+          isOffline: offline,
         ),
       ),
     );
@@ -98,10 +116,10 @@ class _PromptDetailScreenState extends State<PromptDetailScreen> {
           // "Open In" split button — unified on the resolved file path
           // (explicit filePath, else the store id lookup); visible only
           // when it maps to a real file on disk, else hidden.
-          FutureBuilder<String?>(
-            future: _filePath,
+          FutureBuilder<({String? path, bool isOffline})>(
+            future: _fileState,
             builder: (context, snapshot) =>
-                OpenInButton(path: snapshot.data, compact: true),
+                OpenInButton(path: snapshot.data?.path, compact: true),
           ),
         ],
       ),
@@ -185,15 +203,23 @@ class _PromptDetailScreenState extends State<PromptDetailScreen> {
           );
         },
       ),
-      floatingActionButton: FutureBuilder<PromptDoc?>(
-        future: _doc,
-        builder: (context, snapshot) {
-          final PromptDoc? doc = snapshot.data;
-          if (doc == null) return const SizedBox.shrink();
-          return FloatingActionButton(
-            onPressed: () => _openEdit(doc),
-            tooltip: 'Edit (forks subscribed items to library)',
-            child: const Icon(Icons.edit),
+      floatingActionButton: FutureBuilder<({String? path, bool isOffline})>(
+        future: _fileState,
+        builder: (context, stateSnapshot) {
+          final bool offline = stateSnapshot.data?.isOffline ?? false;
+          return FutureBuilder<PromptDoc?>(
+            future: _doc,
+            builder: (context, snapshot) {
+              final PromptDoc? doc = snapshot.data;
+              if (doc == null) return const SizedBox.shrink();
+              return FloatingActionButton(
+                onPressed: () => _openEdit(doc),
+                tooltip: offline
+                    ? 'Edit in place (offline file)'
+                    : 'Edit (forks subscribed items to library)',
+                child: const Icon(Icons.edit),
+              );
+            },
           );
         },
       ),

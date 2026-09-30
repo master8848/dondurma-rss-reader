@@ -77,11 +77,28 @@ class LibraryController {
   /// saved prompts resolve to their real file instead of staying hidden.
   Future<String?> pathForId(String id) => store.pathForId(id);
 
+  /// True when [id]'s resolved file lives under `subscriptions/`
+  /// (offline-saved article mirror). Offline is a location state, not a
+  /// type — see `PromptStore.isOffline`.
+  Future<bool> isOffline(String id) => store.isOffline(id);
+
+  /// Resolved file path + offline state for [id] in a single scan.
+  /// Prefer this in row builders over separate [pathForId] + [isOffline]
+  /// calls. See `PromptStore.fileStateFor`.
+  Future<({String? path, bool isOffline})> fileStateFor(String id) =>
+      store.fileStateFor(id);
+
   /// Writes [doc] to `library/<slug>.md` (rename-stable path).
   Future<PromptDoc> save(PromptDoc doc) => store.save(doc);
 
-  /// Fork-on-edit: copies a subscribed doc into `library/` so edits never
-  /// mutate the subscription mirror. Idempotent when already in `library/`.
+  /// Edits [doc] back to its SAME file (any scope): no fork, no duplicate.
+  /// Offline (`subscriptions/`) edits stay in the mirror file so git sync
+  /// picks them up — see `PromptStore.saveInPlace`.
+  Future<PromptDoc> saveInPlace(PromptDoc doc) => store.saveInPlace(doc);
+
+  /// Fork-on-copy: copies a subscribed doc into `library/` (idempotent when
+  /// already there). Explicit copies only — offline edits stay in the
+  /// mirror via [saveInPlace].
   Future<PromptDoc> forkToLibrary(String id) => store.forkToLibrary(id);
 
   /// Sets the per-feed type and persists `.promptlib/feeds.yaml`.

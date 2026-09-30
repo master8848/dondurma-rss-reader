@@ -235,14 +235,17 @@ class _LibraryScreenState extends State<LibraryScreen> {
               return Column(
                 children: [
                   for (final PromptDoc doc in docs)
-                    FutureBuilder<String?>(
-                      future: widget.controller.pathForId(doc.id),
-                      builder: (context, pathSnapshot) => PromptListTile(
+                    FutureBuilder<({String? path, bool isOffline})>(
+                      future: widget.controller.fileStateFor(doc.id),
+                      builder: (context, snapshot) => PromptListTile(
                         doc: doc,
                         // Saved prompts (library/, prompts/<category>/,
                         // subscriptions/<feed>/ mirrors) resolve to a real
                         // file; the button hides itself when unresolvable.
-                        filePath: pathSnapshot.data,
+                        filePath: snapshot.data?.path,
+                        // Offline (subscriptions-scope) rows get the tiny
+                        // inline marker; nothing renders otherwise.
+                        isOffline: snapshot.data?.isOffline ?? false,
                         onTap: () => _openDetail(doc.id),
                       ),
                     ),
