@@ -2,7 +2,7 @@
 /// TriggerStore CRUD/validation/persistence.
 import 'dart:io';
 
-import 'package:flutter_test/flutter_test.dart';
+import 'package:test/test.dart';
 import 'package:ice_cream_rss_reader/promptlib/expand_bridge.dart';
 import 'package:ice_cream_rss_reader/promptlib/prompt_doc.dart';
 import 'package:ice_cream_rss_reader/promptlib/trigger_store.dart';
