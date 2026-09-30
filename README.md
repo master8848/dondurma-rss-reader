@@ -1,74 +1,64 @@
-> ## Fork note / Attribution
->
-> This is a **fork** of the original **Dondurma RSS Reader** by
-> **[DevOpen-io](https://github.com/DevOpen-io/dondurma-rss-reader)** —
-> upstream: <https://github.com/DevOpen-io/dondurma-rss-reader>.
-> Original work © 2026 DevOpen, released under the [MIT License](LICENSE);
-> all app code in `lib/` and the platform folders is still upstream code
-> (no rewrite claimed).
->
-> What this fork adds so far: promptlib vision/planning docs only
-> (`PROMPTLIB_VISION.md`, plus planning docs in
-> `/Volumes/hdd/saurav/code/promptlib/`). No app code has been changed.
->
-> **Rebrand notice:** a rebrand to a prompt-management app (working name
-> *promptlib*, final name TBD) is planned. The package/app rename happens
-> later — this branch only prepares attribution for it. Upstream link and
-> license are preserved.
->
-> ---
->
-> <p align="center"><img src="assets/Logo.png" width="160" alt="Dondurma RSS Reader logo" /></p>
+# Prompt RSS
 
-# Dondurma RSS Reader
+> Personal prompt-management app, forked from Dondurma RSS Reader by DevOpen-io.
 
-Fast, private RSS/Atom reader built with Flutter and Material 3. No accounts, algorithms, analytics, or ads. Your feeds, your device.
+## What this is
 
-[English](#english) · [Türkçe](#türkçe)
+Prompt RSS is a personal prompt-management app: your prompt library is a folder
+of Markdown files with YAML front matter (`library/`), versioned with Git,
+synced via a Git remote, and distributed via per-feed RSS. Plain files you own;
+the app provides library browsing, Git versioning/sync, RSS subscriptions,
+one-tap prompt expansion, and publishing.
 
-## English
+- **Prompt library folders** — own prompts live as `.md` files under
+  `library/` (YAML front matter + Markdown body); subscribed feeds are
+  materialized under `subscriptions/<feed>/` in the same convention.
+- **Git** — every `library/` edit auto-commits (debounced); push/pull syncs to
+  your remote; history and revert come from `git log` / `git show`.
+- **RSS** — feed registry in `.promptlib/feeds.yaml` (per-feed type
+  `prompt` / `article` / `other`); local feeds render as static RSS 2.0 XML so
+  others can subscribe with any RSS reader. Reader baseline (fetch, filter,
+  cache, notifications) is inherited from Dondurma.
 
-[App Store](https://apps.apple.com/tr/app/dondurma-rss-reader/id6782334224?l=tr) · [Google Play](https://play.google.com/store/apps/details?id=io.devopen.dondurma)
+## Attribution
 
-### Features
+Forked from the original **Dondurma RSS Reader** by
+**[DevOpen-io](https://github.com/DevOpen-io/dondurma-rss-reader)** —
+upstream: <https://github.com/DevOpen-io/dondurma-rss-reader>.
+Original work © 2026 DevOpen, released under the [MIT License](LICENSE).
 
-- RSS 2.0/Atom, feed discovery, custom folders/icons/order, OPML import/export
-- Global/per-feed keyword exclusion, search history, date sections, 50-item pagination
-- Swipe read/bookmark actions; PageView navigation, progress, reading time, image carousel
-- Global and per-feed full-text extraction with isolate processing
-- Built-in WebView, EasyList/AdGuard, DarkReader, external browser modes
-- Offline article/image cache; foreground and Workmanager background sync
-- Local notifications, per-feed controls, quiet hours, digest selection
-- Latest-news and category home-screen widgets
-- 10 FlexColorScheme palettes; system/light/dark; reading typography controls
-- Responsive widths, semantic controls, EN/TR/ES localization
-- Modal-aware global toast feedback respecting reduced-motion settings
+All app code in `lib/` and the platform folders (`android/`, `ios/`,
+`linux/`, `windows/`, `macos/`) is still upstream code; no rewrite is claimed.
+The Dart package name (`ice_cream_rss_reader` in `pubspec.yaml`) is unchanged
+on this branch.
 
-### Architecture
+## What changed so far
 
-```text
-lib/
-├── main.dart       # startup, Hive migration, providers, OS integrations
-├── models/         # FeedItem, FeedSubscription
-├── providers/      # settings, subscriptions, bookmarks, feeds, article state
-├── services/       # feed, full text, notification, OPML, background, widget
-├── screens/        # onboarding, home tabs, article, settings, legal, debug
-├── widgets/        # reusable article, folder, home, settings UI
-├── router/         # GoRouter routes and onboarding redirect
-├── theme/          # Material 3 themes
-├── utils/          # global toast
-└── l10n/           # EN/TR/ES localization
-```
+Vision/planning docs only — no app code has been changed:
 
-Five `ChangeNotifier` providers power UI state. `FeedProvider` receives subscription, settings, and bookmark state through `ChangeNotifierProxyProvider3`. Hive CE uses `settings`, `feeds`, and `bookmarks` boxes.
+- `PROMPTLIB_VISION.md` (repo root): goal, Dondurma baseline reuse list,
+  change items, v1 non-goals.
+- Planning docs in `/Volumes/hdd/saurav/code/promptlib/` (`ARCHITECTURE.md`,
+  `DECISIONS.md`, `QUESTIONS.md`).
 
-### Development
+## Roadmap
+
+See [`PROMPTLIB_VISION.md`](PROMPTLIB_VISION.md) for the full vision delta:
+per-feed types, `library/` + `subscriptions/` folders, `.promptlib/feeds.yaml`,
+`GitService`, RSS `Publisher`, desktop hotkeys, quick-expand, and
+highlight-to-add (macOS first, clipboard fallback). Planning details live in
+`/Volumes/hdd/saurav/code/promptlib/`.
+
+## Development
 
 Requires Flutter compatible with Dart `^3.11.0`.
 
+> Note: `flutter` is not installed in this environment, so these commands have
+> not been run here.
+
 ```bash
-git clone https://github.com/DevOpen-io/Dondurma-Rss-Reader.git
-cd Dondurma-Rss-Reader
+git clone https://github.com/master8848/dondurma-rss-reader.git
+cd dondurma-rss-reader
 flutter pub get
 flutter test
 flutter run
@@ -76,36 +66,11 @@ flutter run
 
 Release: `flutter build apk|ios|web|windows|macos|linux --release`.
 
-Details: [developer guide](DEVELOPER.md) · [product guide](PRODUCT.md)
-
-## Türkçe
-
-[App Store](https://apps.apple.com/tr/app/dondurma-rss-reader/id6782334224?l=tr) · [Google Play](https://play.google.com/store/apps/details?id=io.devopen.dondurma)
-
-### Özellikler
-
-- RSS 2.0/Atom, akış keşfi, özel klasör/simge/sıralama, OPML içe/dışa aktarma
-- Genel/akış bazlı kelime filtresi, arama geçmişi, tarih bölümleri, 50 öğelik sayfalama
-- Kaydırarak okundu/yer imi; PageView, okuma ilerlemesi/süresi, görsel galerisi
-- Genel ve akış bazlı tam metin çıkarma; isolate tabanlı işleme
-- Yerleşik WebView, EasyList/AdGuard, DarkReader, harici tarayıcı modları
-- Çevrimdışı makale/görsel önbelleği; ön plan ve Workmanager senkronizasyonu
-- Yerel bildirimler, akış kontrolleri, sessiz saatler, özet seçimi
-- Son haberler ve kategori ana ekran widget'ları
-- 10 renk şeması; sistem/açık/koyu; okuma tipografisi ayarları
-- Duyarlı genişlik, semantik kontroller, EN/TR/ES
-- Azaltılmış hareket ayarına uyan, modal farkındalıklı global toast
-
-### Geliştirme
-
-```bash
-flutter pub get
-flutter test
-flutter run
-```
-
-Ayrıntılar: [geliştirici rehberi](DEVELOPER.md) · [ürün rehberi](PRODUCT.md)
+Details: [developer guide](DEVELOPER.md) · [product guide](PRODUCT.md) ·
+[vision](PROMPTLIB_VISION.md)
 
 ## Privacy and license
 
-[English privacy policy](docs/privacy-policy.en.md) · [Türkçe gizlilik politikası](docs/privacy-policy.tr.md) · [MIT License](LICENSE)
+[English privacy policy](docs/privacy-policy.en.md) ·
+[Türkçe gizlilik politikası](docs/privacy-policy.tr.md) ·
+[MIT License](LICENSE) (© 2026 DevOpen)

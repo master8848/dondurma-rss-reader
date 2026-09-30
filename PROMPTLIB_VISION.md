@@ -1,4 +1,6 @@
-# PromptLib Vision (delta over Dondurma RSS Reader)
+# Prompt RSS Vision (delta over Dondurma RSS Reader)
+
+> Personal prompt-management app, forked from Dondurma RSS Reader by DevOpen-io.
 
 > Attribution: forked from the original Dondurma RSS Reader by
 > [DevOpen-io](https://github.com/DevOpen-io/dondurma-rss-reader)

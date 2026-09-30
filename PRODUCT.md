@@ -40,3 +40,15 @@ Calm, capable, personal. Ice-cream identity adds warmth; functionality stays ser
 ## Current boundary
 
 Local-first feed reading. TTS, statistics, tags, external read-later services, advanced search, and reading queues remain backlog, not shipped features.
+
+## Fork note (Prompt RSS)
+
+This file describes the upstream Dondurma product pillars, preserved as-is.
+The fork rebrands to **Prompt RSS** — a personal prompt-management app, forked
+from Dondurma RSS Reader by
+[DevOpen-io](https://github.com/DevOpen-io/dondurma-rss-reader)
+(MIT © 2026 DevOpen; `lib/` and platform code still upstream). The prompt
+direction (`library/` Markdown + Git + RSS distribution) is specified in
+`PROMPTLIB_VISION.md`; planning docs live in
+`/Volumes/hdd/saurav/code/promptlib/`. No product pillar above is modified by
+this note.

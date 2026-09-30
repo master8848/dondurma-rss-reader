@@ -1,24 +1,42 @@
-<!-- FORK ATTRIBUTION: This repo is a fork of the original Dondurma RSS Reader
-  by DevOpen-io — upstream: https://github.com/DevOpen-io/dondurma-rss-reader
-  (MIT License (c) 2026 DevOpen). All code in lib/ and the platform folders
-  (android/, ios/, linux/, windows/, macos/) is still upstream code; no
-  rewrite is claimed. This fork has so far added only promptlib vision/planning
-  docs (PROMPTLIB_VISION.md + planning docs in /Volumes/hdd/saurav/code/promptlib/).
-  A rebrand to a prompt-management app (working name promptlib, final name TBD)
-  is planned but NOT yet done — do not rename the package/app on this branch. -->
+# Prompt RSS
 
-# Dondurma RSS Reader
+> Personal prompt-management app, forked from Dondurma RSS Reader by DevOpen-io.
+
+## Fork note / Attribution
+
+This repo is a fork of the original **Dondurma RSS Reader** by
+**[DevOpen-io](https://github.com/DevOpen-io/dondurma-rss-reader)** —
+upstream: <https://github.com/DevOpen-io/dondurma-rss-reader>
+(MIT License (c) 2026 DevOpen). All code in `lib/` and the platform folders
+(`android/`, `ios/`, `linux/`, `windows/`, `macos/`) is still upstream code; no
+rewrite is claimed. This fork has so far added only promptlib vision/planning
+docs (`PROMPTLIB_VISION.md` + planning docs in
+`/Volumes/hdd/saurav/code/promptlib/`). The Dart package name
+(`ice_cream_rss_reader` in `pubspec.yaml`) is unchanged — do not rename the
+package/app on this branch.
+
+Planning pointers: [`PROMPTLIB_VISION.md`](PROMPTLIB_VISION.md) for the vision
+delta; `/Volumes/hdd/saurav/code/promptlib/` (`ARCHITECTURE.md`,
+`DECISIONS.md`, `QUESTIONS.md`) for module interfaces and decisions.
 
 ## Project Overview
-A modern Flutter RSS/Atom feed reader with Material 3 UI, FlexColorScheme theming, offline caching, foreground + Workmanager background sync, local notifications, home-screen widgets, and full internationalization (English, Turkish, Spanish).
+
+Prompt RSS builds on a modern Flutter RSS/Atom feed reader baseline
+(Material 3 UI, FlexColorScheme theming, offline caching, foreground +
+Workmanager background sync, local notifications, home-screen widgets, and
+full internationalization in English, Turkish, Spanish) and re-targets it at
+personal prompt management (`library/` Markdown + Git + RSS distribution).
+v1 targets desktop (Windows/macOS/Linux); mobile flows are out of scope.
 
 ## Architecture
+
 - **State Management**: `provider` package with 5 providers; `FeedProvider` wired via `ChangeNotifierProxyProvider3`
 - **Persistence**: Hive CE (`hive_ce` / `hive_ce_flutter`) with 3 boxes
 - **Routing**: GoRouter with declarative routes + onboarding redirect
 - **Background work**: `workmanager` for sync when app is closed; `home_widget` for home-screen widgets
 
 ## Providers
+
 | Provider | Purpose |
 |----------|---------|
 | `FeedProvider` | Feed fetching, filtering, pagination, caching, notifications. Uses `ChangeNotifierProxyProvider3` to depend on Subscription/Settings/Bookmark providers |
@@ -28,15 +46,18 @@ A modern Flutter RSS/Atom feed reader with Material 3 UI, FlexColorScheme themin
 | `ArticlePageProvider` | Per-article scroll state, full-text extraction, reading progress |
 
 ## Models
+
 - [`FeedItem`](lib/models/feed_item.dart) — Article/entry with JSON serialization, copyWith
 - [`FeedSubscription`](lib/models/feed_subscription.dart) — Feed source with url, name, category, notifications, full-text, excluded keywords
 
 ## Hive Boxes
+
 - **`'settings'`** — theme, locale, cache/sync, notifications, reading, filters/search, browser, `autoFullText`, onboarding, migration flag
 - **`'feeds'`** — subscriptions, custom categories, cached items, read IDs, category icons/order, `feedValidators`; `bgKnownItemIds` is legacy migration evidence only
 - **`'bookmarks'`** — Bookmarked items (JSON + ID set)
 
 ## Core Services
+
 - [`FeedService`](lib/services/feed_service.dart) — HTTP fetch with browser UA + keep-alive client, RSS/Atom parsing via `dart_rss`, HTTP 304 (etag/last-modified) support, isolate-based `parseFeedBody`
 - [`FullTextExtractionService`](lib/services/full_text_extraction_service.dart) — Heuristic content extraction, runs in isolate, shared 20-entry FIFO cache
 - [`NotificationService`](lib/services/notification_service.dart) — Singleton wrapper for `flutter_local_notifications`, quiet hours, digest modes, launch payload → article navigation
@@ -46,12 +67,14 @@ A modern Flutter RSS/Atom feed reader with Material 3 UI, FlexColorScheme themin
 - [`ImageCacheService`](lib/services/image_cache_service.dart) — Article and thumbnail cache managers
 
 ## Routes
+
 - `/onboarding` → OnboardingScreen (redirect target until `hasSeenOnboarding`)
 - `/` → HomeScreen (bottom nav: Feeds/Folders/Bookmarks/Settings)
 - `/article` → ArticleScreen (PageView with swipe navigation; receives `items` + `initialIndex` via `state.extra`)
 - `/debug` → DebugScreen (developer utilities, hidden behind long-press on app version)
 
 ## Key Dependencies
+
 ```
 provider, hive_ce, hive_ce_flutter, http, dart_rss, html,
 flutter_html, flex_color_scheme, google_fonts (Outfit),
@@ -62,6 +85,7 @@ file_selector, package_info_plus, xml, intl, flutter_localizations
 ```
 
 ## Key Features
+
 - **Swipe Gestures**: Right = read/unread, Left = bookmark
 - **Pagination**: Date-based sections (Today/Yesterday/Older), `_pageSize = 50`, resets on filter/category/search change
 - **In-App Browser**: WebView with ad blocking toggle (EasyList + AdGuard) and optional DarkReader injection
@@ -75,6 +99,7 @@ file_selector, package_info_plus, xml, intl, flutter_localizations
 - **Feedback**: Global modal-aware toast; replace-not-queue timing and reduced-motion support
 
 ## Important Patterns
+
 - `FeedProvider._hasLoadedOnce` gates notification dispatch — first load never triggers notifications
 - `ObservedArticleStore` owns feed+subscription-epoch scoped, 14-day observation history outside Hive cache; exclusive lock-file creation serializes foreground/Workmanager claims
 - Notification settings affect delivery after claim; suppressed articles never backfill
@@ -90,6 +115,7 @@ file_selector, package_info_plus, xml, intl, flutter_localizations
 - Localization derived from `supportedAppLanguages` (EN/TR/ES); add a language via ARB file + one entry there
 
 ## Common Gotchas
+
 - Always use fallback defaults in JSON deserialization for backward compatibility
 - `_migrateHiveBoxes()` in `main.dart` is a one-time migration from the legacy single `'settings'` box; check it when adding new `'feeds'`/`'bookmarks'` keys
 - `_manageCacheTimer()` recreates timer on proxy provider updates
