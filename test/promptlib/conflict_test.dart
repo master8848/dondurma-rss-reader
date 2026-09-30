@@ -1,7 +1,7 @@
 /// WP5 tests: real two-clone conflicts resolve with no data loss.
 import 'dart:io';
 
-import 'package:flutter_test/flutter_test.dart';
+import 'package:test/test.dart';
 import 'package:ice_cream_rss_reader/promptlib/conflict_resolve.dart';
 import 'package:ice_cream_rss_reader/promptlib/git_service.dart';
 

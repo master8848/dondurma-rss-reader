@@ -1,7 +1,7 @@
 /// WP5 tests: GitService push/manage flow over temp repos via system git.
 import 'dart:io';
 
-import 'package:flutter_test/flutter_test.dart';
+import 'package:test/test.dart';
 import 'package:ice_cream_rss_reader/promptlib/git_service.dart';
 
 Future<ProcessResult> _git(

@@ -1,5 +1,5 @@
 /// WP6 tests: HotkeyService register/unregister, conflicts, add flow order.
-import 'package:flutter_test/flutter_test.dart';
+import 'package:test/test.dart';
 import 'package:ice_cream_rss_reader/promptlib/hotkey_service.dart';
 import 'package:ice_cream_rss_reader/promptlib/selection_capture.dart';
 import 'package:ice_cream_rss_reader/promptlib/shortcut_config.dart';

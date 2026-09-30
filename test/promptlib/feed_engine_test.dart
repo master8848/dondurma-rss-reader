@@ -7,7 +7,7 @@
 /// duplicate items are deduped by id/guid.
 import 'dart:io';
 
-import 'package:flutter_test/flutter_test.dart';
+import 'package:test/test.dart';
 import 'package:ice_cream_rss_reader/promptlib/feed_config.dart';
 import 'package:ice_cream_rss_reader/promptlib/feed_engine.dart';
 import 'package:ice_cream_rss_reader/promptlib/prompt_doc.dart';

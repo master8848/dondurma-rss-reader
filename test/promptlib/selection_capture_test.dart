@@ -1,5 +1,5 @@
 /// WP6 tests: SelectionCaptureService per-OS behavior + prefill placeholders.
-import 'package:flutter_test/flutter_test.dart';
+import 'package:test/test.dart';
 import 'package:ice_cream_rss_reader/promptlib/selection_capture.dart';
 
 void main() {
