@@ -279,4 +279,82 @@ void main() {
           isTrue);
     });
   });
+
+  group('importLegacyLibrary / first-bind auto-import', () {
+    Future<void> _writeLegacy(String name, String content) =>
+        _write('$root${Platform.pathSeparator}library'
+            '${Platform.pathSeparator}$name', content);
+
+    test('first bind auto-imports legacy files into the category dir',
+        () async {
+      await _writeLegacy('a.md', '# a\n');
+      await _writeLegacy('b.md', '# b\n');
+      final RepoRegistry reg = await _seeded(root.path);
+      await reg.bind(categorySlug: 'coding', repoId: 'shared');
+      expect(reg.bindingFor('coding')!.repoId, 'shared');
+      final String dest = reg.resolveCategoryDir('coding');
+      expect(File('$dest${Platform.pathSeparator}a.md').readAsStringSync(),
+          '# a\n');
+      expect(File('$dest${Platform.pathSeparator}b.md').readAsStringSync(),
+          '# b\n');
+      expect(
+          Directory('$root${Platform.pathSeparator}library')
+              .listSync()
+              .whereType<File>(),
+          isEmpty,
+          reason: 'auto-import must move, not copy');
+    });
+
+    test('second bind does NOT auto-move; explicit importLegacy does',
+        () async {
+      final RepoRegistry reg = await _seeded(root.path);
+      await reg.bind(categorySlug: 'coding', repoId: 'shared');
+      await _writeLegacy('later.md', '# later\n');
+      await reg.bind(categorySlug: 'writing', repoId: 'shared');
+      expect(File('$root${Platform.pathSeparator}library'
+          '${Platform.pathSeparator}later.md').existsSync(), isTrue,
+          reason: 'second bind must not sweep library/');
+      await reg.bind(
+          categorySlug: 'writing', repoId: 'shared', importLegacy: true);
+      final String dest = reg.resolveCategoryDir('writing');
+      expect(File('$dest${Platform.pathSeparator}later.md').readAsStringSync(),
+          '# later\n');
+    });
+
+    test('name clash gains a numeric suffix, never overwrites', () async {
+      final RepoRegistry reg = await _seeded(root.path);
+      await reg.bind(categorySlug: 'coding', repoId: 'shared');
+      final String dest = reg.resolveCategoryDir('coding');
+      await _write('$dest${Platform.pathSeparator}note.md', '# original\n');
+      await _writeLegacy('note.md', '# legacy\n');
+      final List<String> moved = await reg.importLegacyLibrary(
+          categorySlug: 'coding');
+      expect(moved, hasLength(1));
+      expect(moved.single.endsWith('note-2.md'), isTrue);
+      expect(File('$dest${Platform.pathSeparator}note.md').readAsStringSync(),
+          '# original\n');
+      expect(File(moved.single).readAsStringSync(), '# legacy\n');
+    });
+
+    test('empty source is a no-op returning []', () async {
+      final RepoRegistry reg = await _seeded(root.path);
+      expect(await reg.importLegacyLibrary(categorySlug: 'coding'),
+          isEmpty);
+    });
+
+    test('empty slug throws ArgumentError', () async {
+      final RepoRegistry reg = await _seeded(root.path);
+      expect(() => reg.importLegacyLibrary(categorySlug: '  '),
+          throwsArgumentError);
+    });
+
+    test('memory-only registry bind does not crash (import skipped)',
+        () async {
+      final RepoRegistry reg = RepoRegistry();
+      await reg.addRepo(
+          const RepoRecord(repoId: 'local', localPath: '/tmp/nowhere'));
+      await reg.bind(categorySlug: 'coding', repoId: 'local');
+      expect(reg.bindingFor('coding')!.repoId, 'local');
+    });
+  });
 }
