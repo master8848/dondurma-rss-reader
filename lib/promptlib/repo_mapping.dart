@@ -34,6 +34,10 @@ import 'git_service.dart';
 /// Directory holding per-category prompt folders under a store root.
 const String promptsDirName = 'prompts';
 
+/// Legacy directory holding uncategorized `*.md` prompts directly under a
+/// store root (`<root>/library/*.md`). See [RepoRegistry.importLegacyLibrary].
+const String libraryDirName = 'library';
+
 /// Config directory holding the YAML mirrors under a store root.
 const String promptlibConfigDir = '.promptlib';
 
@@ -301,11 +305,21 @@ class RepoRegistry {
   /// `prompts/<slug>`). Throws [StateError] when the repo is unknown
   /// (prevents typo'd dangling bindings) and [ArgumentError] on empty slugs
   /// or escaping paths. Persists mirrors when [root] is known.
+  ///
+  /// Legacy auto-import: when [importLegacy] is true — or when this is the
+  /// first-ever bind on the registry — the legacy `<root>/library/*.md`
+  /// files are moved into the category's resolved dir best-effort (see
+  /// [importLegacyLibrary]). Import failures never break the bind: files
+  /// staying in `library/` remain readable. Memory-only registries (no
+  /// [root] and no [rootOverride]) skip the import silently.
   Future<void> bind({
     required String categorySlug,
     required String repoId,
     String? pathInRepo,
     bool syncEnabled = false,
+    bool importLegacy = false,
+    GitService? git,
+    String? rootOverride,
   }) async {
     final String slug = normalizeSlug(categorySlug);
     if (slug.isEmpty) {
@@ -317,6 +331,7 @@ class RepoRegistry {
           'promptlib: cannot bind "$slug" to unknown repo "$rid" '
           '(addRepo first)');
     }
+    final bool firstBind = _bindings.isEmpty;
     final String rawPath = (pathInRepo ?? '').trim();
     _bindings[slug] = RepoBinding(
       categorySlug: slug,
@@ -326,6 +341,20 @@ class RepoRegistry {
       syncEnabled: syncEnabled,
     );
     await _autoPersist();
+    if (importLegacy || firstBind) {
+      final String? r = rootOverride ?? root;
+      if (r != null && r.trim().isNotEmpty) {
+        try {
+          await importLegacyLibrary(
+            categorySlug: slug,
+            git: git,
+            rootOverride: r,
+          );
+        } catch (_) {
+          // Best-effort: library/ files stay readable in place.
+        }
+      }
+    }
   }
 
   /// Removes the binding for [categorySlug]. Files stay where they are;
@@ -438,6 +467,78 @@ class RepoRegistry {
       syncEnabled: keepSync ?? false,
     );
     await _autoPersist();
+    return moved;
+  }
+
+  /// Moves legacy `<root>/library/*.md` files (top-level only) into the
+  /// resolved dir of [categorySlug] — the first-bind onboarding path from
+  /// the uncategorized legacy layout into a bound category.
+  ///
+  /// Git-mv semantics mirror [migrateCategory]: when [git] is provided and
+  /// reports available, each move is attempted with `git mv` inside the
+  /// enclosing work tree; any git failure falls back to a plain filesystem
+  /// move. Destinations are never overwritten: a clash gains a numeric
+  /// `-2`/`-3` suffix (`note.md` → `note-2.md`).
+  ///
+  /// Returns the destination paths moved. No-op (empty result) when the
+  /// source dir is missing/empty or identical to the destination.
+  /// Unreadable files are skipped individually; content is never parsed, so
+  /// bad content never throws. Throws [ArgumentError] on empty slugs and
+  /// [StateError] when no root is known.
+  Future<List<String>> importLegacyLibrary({
+    required String categorySlug,
+    GitService? git,
+    String? rootOverride,
+  }) async {
+    final String root = _effectiveRoot(rootOverride);
+    final String slug = normalizeSlug(categorySlug);
+    if (slug.isEmpty) {
+      throw ArgumentError('promptlib: categorySlug must not be empty');
+    }
+    final String destDir = resolveCategoryDir(slug, rootOverride: root);
+    final String srcDir = _join(root, libraryDirName);
+    if (_sameDir(srcDir, destDir)) return <String>[];
+    final Directory src = Directory(srcDir);
+    if (!await src.exists()) return <String>[];
+    final List<File> files = <File>[];
+    await for (final FileSystemEntity e
+        in src.list(recursive: false, followLinks: false)) {
+      if (e is File && e.path.toLowerCase().endsWith('.md')) {
+        files.add(e);
+      }
+    }
+    if (files.isEmpty) return <String>[];
+    files.sort((File a, File b) => a.path.compareTo(b.path));
+    await Directory(destDir).create(recursive: true);
+    final bool gitOk = await _gitAvailable(git);
+    String? cachedTopLevel;
+    bool topLevelProbed = false;
+    final List<String> moved = <String>[];
+    for (final File f in files) {
+      try {
+        await f.readAsBytes(); // readability probe; skip when unreadable
+      } catch (_) {
+        continue;
+      }
+      try {
+        final String dest =
+            await _uniqueDestIn(destDir, _basename(f.path));
+        bool done = false;
+        if (gitOk) {
+          if (!topLevelProbed) {
+            cachedTopLevel = await _gitTopLevel(srcDir);
+            topLevelProbed = true;
+          }
+          if (cachedTopLevel != null) {
+            done = await _gitMv(cachedTopLevel, f.path, dest);
+          }
+        }
+        if (!done) await _plainMove(f.path, dest);
+        moved.add(dest);
+      } catch (_) {
+        // Best-effort: the file stays in library/ (still readable).
+      }
+    }
     return moved;
   }
 
@@ -654,6 +755,27 @@ class RepoRegistry {
   static String _dirname(String p) {
     final int i = p.lastIndexOf(Platform.pathSeparator);
     return i < 0 ? '.' : p.substring(0, i);
+  }
+
+  static String _basename(String p) {
+    final int i = p.lastIndexOf(Platform.pathSeparator);
+    return i < 0 ? p : p.substring(i + 1);
+  }
+
+  /// A non-clobbering destination for [name] inside [dir]: [name] itself
+  /// when free, else `<stem>-2.md`, `<stem>-3.md`, … Never overwrites.
+  static Future<String> _uniqueDestIn(String dir, String name) async {
+    final String first = _join(dir, name);
+    if (!await File(first).exists()) return first;
+    final String stem = name.toLowerCase().endsWith('.md')
+        ? name.substring(0, name.length - 3)
+        : name;
+    int n = 2;
+    while (true) {
+      final String next = _join(dir, '$stem-$n.md');
+      if (!await File(next).exists()) return next;
+      n++;
+    }
   }
 
   static bool _sameDir(String a, String b) {
