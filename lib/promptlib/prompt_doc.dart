@@ -15,7 +15,12 @@ import 'dart:math';
 /// A single prompt: YAML front-matter metadata plus a Markdown [body].
 ///
 /// Front-matter keys (see `front_matter.dart`): `id`, `title`, `tags`,
-/// `source_feed`, `created`, `updated`.
+/// `source_feed`, `created`, `updated`, `version`, `supersedes`.
+///
+/// `version` starts at 1. In-place edits bump it by one in the same file;
+/// optimized rewrites snapshot to `<slug>.v<N>.md` with the same id and
+/// `supersedes` pointing at the previous file (repo-relative when known).
+/// Unknown front-matter keys are ignored on parse (forward compatibility).
 class PromptDoc {
   /// Stable identifier. Never derived from [title].
   final String id;
@@ -35,6 +40,15 @@ class PromptDoc {
   final DateTime? created;
   final DateTime? updated;
 
+  /// Monotonic version, starting at 1. Missing on parse (legacy files)
+  /// defaults to 1; values < 1 are rejected by the parser.
+  final int version;
+
+  /// Previous file this snapshot supersedes (repo-relative path when the
+  /// file lives under the store root, else the plain filename). Absent
+  /// (`null`) unless this file is an optimize snapshot.
+  final String? supersedes;
+
   /// Markdown body (everything below the front matter).
   final String body;
 
@@ -51,6 +65,8 @@ class PromptDoc {
     this.updated,
     this.body = '',
     this.needsReview = false,
+    this.version = 1,
+    this.supersedes,
   });
 
   PromptDoc copyWith({
@@ -62,6 +78,8 @@ class PromptDoc {
     DateTime? Function()? updated,
     String? body,
     bool? needsReview,
+    int? version,
+    String? Function()? supersedes,
   }) {
     return PromptDoc(
       id: id ?? this.id,
@@ -72,6 +90,8 @@ class PromptDoc {
       updated: updated != null ? updated() : this.updated,
       body: body ?? this.body,
       needsReview: needsReview ?? this.needsReview,
+      version: version ?? this.version,
+      supersedes: supersedes != null ? supersedes() : this.supersedes,
     );
   }
 
@@ -85,7 +105,8 @@ class PromptDoc {
   @override
   String toString() =>
       'PromptDoc(id: $id, title: $title, tags: $tags, '
-      'sourceFeed: $sourceFeed, needsReview: $needsReview)';
+      'sourceFeed: $sourceFeed, needsReview: $needsReview, '
+      'version: $version, supersedes: $supersedes)';
 }
 
 /// Generates an RFC 4122 version-4 UUID.

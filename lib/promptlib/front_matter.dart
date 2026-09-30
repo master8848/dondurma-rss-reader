@@ -1,10 +1,10 @@
-/// Front-matter parser/serializer for prompt Markdown files (WP1).
+/// Front-matter parser/serializer for prompt Markdown files (WP1 + repomap).
 ///
 /// Pure-Dart, dependency-free: this is a minimal YAML-subset parser covering
 /// exactly the promptlib schema (`id`, `title`, `tags`, `source_feed`,
-/// `created`, `updated`). Supported value shapes: bare scalars,
-/// single/double-quoted scalars, flow lists (`tags: [a, b]`), and block
-/// lists (`tags:\n  - a\n  - b`).
+/// `created`, `updated`, `version`, `supersedes`). Supported value shapes:
+/// bare scalars, single/double-quoted scalars, flow lists (`tags: [a, b]`),
+/// and block lists (`tags:\n  - a\n  - b`).
 ///
 /// NOTE (dependency): for full YAML (multiline strings, anchors, nested
 /// maps) a future workstream should add `yaml: ^3.1.2` to `pubspec.yaml`
@@ -60,6 +60,13 @@ String serialize(PromptDoc doc) {
   if (doc.updated != null) {
     buf.writeln('updated: ${doc.updated!.toUtc().toIso8601String()}');
   }
+  // Version is always written so snapshots and edits round-trip exactly;
+  // legacy files without it parse back as version 1.
+  buf.writeln('version: ${doc.version}');
+  // `supersedes` is absent unless this file is an optimize snapshot.
+  if (doc.supersedes != null && doc.supersedes!.trim().isNotEmpty) {
+    buf.writeln('supersedes: ${_yamlScalar(doc.supersedes!)}');
+  }
   buf.writeln('---');
   buf.write(doc.body);
   return buf.toString();
@@ -100,6 +107,12 @@ PromptDoc _parseInner(String markdown) {
   final String? sourceFeed = rawSource.isEmpty ? null : rawSource;
   final DateTime? created = _asDate(fm['created'], 'created');
   final DateTime? updated = _asDate(fm['updated'], 'updated');
+  // `version` defaults to 1 for legacy files; unknown keys are ignored
+  // (they stay in `fm` but are never read — forward compatibility).
+  final int version = _asVersion(fm['version']);
+  final String rawSupersedes = _asString(fm['supersedes']).trim();
+  final String? supersedes =
+      rawSupersedes.isEmpty ? null : rawSupersedes;
 
   return PromptDoc(
     id: id,
@@ -110,6 +123,8 @@ PromptDoc _parseInner(String markdown) {
     updated: updated,
     body: body,
     needsReview: needsReview,
+    version: version,
+    supersedes: supersedes,
   );
 }
 
@@ -210,8 +225,30 @@ List<String> _asStringList(Object? value) {
   return <String>[];
 }
 
-DateTime? _asDate(Object? value, String field) {
-  if (value == null) return null;
+/// Parses the `version` front-matter value. Absent/blank defaults to 1
+/// (legacy files predate versioning). Anything that is not a positive
+/// integer throws [FormatException] so the store skips the file via
+/// `skippedFiles` instead of silently resetting history.
+int _asVersion(Object? value) {
+  if (value == null) return 1;
+  if (value is List<String>) {
+    throw const FormatException(
+        'promptlib: front-matter `version` must be a single integer, '
+        'not a list');
+  }
+  final String raw = (value as String).trim();
+  if (raw.isEmpty) return 1;
+  final String unquoted = _unquote(raw);
+  final int? parsed = int.tryParse(unquoted);
+  if (parsed == null || parsed < 1) {
+    throw FormatException(
+        'promptlib: front-matter `version` must be a positive integer, '
+        'got "$raw"');
+  }
+  return parsed;
+}
+
+DateTime? _asDate(Object? value, String field) {  if (value == null) return null;
   if (value is List<String>) {
     throw FormatException(
         'promptlib: front-matter `$field` must be a single date, '
