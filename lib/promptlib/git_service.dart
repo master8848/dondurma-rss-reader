@@ -153,15 +153,41 @@ class ProcessGitService implements GitService {
     '.promptlib',
   ];
 
+  /// Fallback commit identity, used ONLY when the user's git config provides
+  /// no identity (see [isMissingIdentityError]). Passed per-invocation via
+  /// `-c user.name=… -c user.email=…` so user/repo config files are never
+  /// written to — the app never runs `git config user.*`. App-only address,
+  /// never a personal one.
+  static const String fallbackAuthorName = 'Prompt RSS';
+  static const String fallbackAuthorEmail = 'prompt-rss@local';
+
   bool? _availableCache;
   Timer? _debounceTimer;
   final List<String> _pendingMessages = <String>[];
+
+  /// Extra environment variables merged into every `Process.run` call
+  /// (overriding the inherited process environment). Used in tests to
+  /// isolate `HOME` / git config discovery; `null` (default) inherits
+  /// the current process environment unchanged.
+  final Map<String, String>? environment;
 
   ProcessGitService({
     required this.workingDirectory,
     this.gitBinary = 'git',
     this.debounce = const Duration(seconds: 2),
+    this.environment,
   });
+
+  /// True when [output] (stdout+stderr of a failed `git commit`) indicates
+  /// a missing commit identity, matched case-insensitively. Callers use
+  /// this to decide whether a single `-c user.name/email` retry is valid.
+  static bool isMissingIdentityError(String output) {
+    final String lower = output.toLowerCase();
+    return lower.contains('author identity unknown') ||
+        lower.contains('unable to auto-detect email address') ||
+        lower.contains('empty ident') ||
+        lower.contains('please tell me who you are');
+  }
 
   @override
   Future<bool> get isGitAvailable async {
@@ -171,6 +197,8 @@ class ProcessGitService implements GitService {
         gitBinary,
         const ['--version'],
         workingDirectory: workingDirectory,
+        environment:
+            environment == null ? null : {...Platform.environment, ...environment!},
       );
       _availableCache = r.exitCode == 0;
     } on ProcessException {
@@ -221,6 +249,8 @@ class ProcessGitService implements GitService {
         gitBinary,
         args,
         workingDirectory: workingDirectory,
+        environment:
+            environment == null ? null : {...Platform.environment, ...environment!},
       );
     } on ProcessException catch (e) {
       throw GitNotAvailableException(
@@ -240,9 +270,12 @@ class ProcessGitService implements GitService {
         lower.contains('invalid username') ||
         lower.contains('logon failed') ||
         lower.contains('unable to access')) {
-      return 'hint: check the remote URL and credentials '
-          '(e.g. `git remote -v`, SSH key / personal access token), '
-          'then retry — nothing was changed locally.';
+      return 'hint: auth is handled by system git + OS credential manager — '
+          'nothing is stored in-app. Check the remote URL (`git remote -v`) '
+          'and your credentials (SSH key / personal access token), '
+          'then retry — nothing was changed locally. '
+          'See https://docs.github.com/en/authentication and '
+          'https://docs.github.com/en/get-started/getting-started-with-git/about-remote-repositories.';
     }
     return null;
   }
@@ -299,6 +332,34 @@ class ProcessGitService implements GitService {
       // Nothing staged = success for debounce purposes.
       if (out.contains('nothing to commit') ||
           out.contains('no changes added to commit')) {
+        return;
+      }
+      // Missing user identity: retry ONCE with a per-invocation `-c`
+      // fallback so no user/repo config is ever written (never `git
+      // config`). The hot path above always tries the user's own config
+      // first — no identity probe runs before it.
+      if (isMissingIdentityError(out)) {
+        final ProcessResult retry = await _run([
+          '-c',
+          'user.name=$fallbackAuthorName',
+          '-c',
+          'user.email=$fallbackAuthorEmail',
+          'commit',
+          '-m',
+          message,
+        ]);
+        if (retry.exitCode != 0) {
+          final String retryOut = '${retry.stdout}${retry.stderr}';
+          if (retryOut.contains('nothing to commit') ||
+              retryOut.contains('no changes added to commit')) {
+            return;
+          }
+          throw GitException(
+            'promptlib: git commit failed',
+            exitCode: retry.exitCode,
+            stderr: retryOut.trim(),
+          );
+        }
         return;
       }
       throw GitException(
