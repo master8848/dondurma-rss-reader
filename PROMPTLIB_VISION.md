@@ -1,5 +1,9 @@
 # PromptLib Vision (delta over Dondurma RSS Reader)
 
+> Attribution: forked from the original Dondurma RSS Reader by
+> [DevOpen-io](https://github.com/DevOpen-io/dondurma-rss-reader)
+> (MIT License (c) 2026 DevOpen); all `lib/` and platform code below is upstream work.
+
 ## 1. Goal
 
 PromptLib is a personal prompt-management desktop app (Flutter, Windows/macOS/Linux) forked from the Dondurma RSS reader: the user's prompt library is a folder of Markdown files with YAML front matter (`library/`), versioned with Git, synced via a Git remote, and distributed via per-feed RSS — so prompts are plain files the user owns, while the app provides library browsing, Git versioning/sync, RSS subscriptions, one-tap prompt expansion, and publishing.
@@ -34,6 +38,7 @@ Dondurma is a local-first Flutter RSS/Atom reader (Material 3 + FlexColorScheme,
 6. **RSS publisher from `library/` (`Publisher`)** — each local feed defined in `.promptlib/feeds.yaml` renders as a static RSS 2.0 XML file generated from `library/` contents (title/description/version → item fields), so others can subscribe to a user's prompt feed with any RSS reader; publishing = regenerate XML + commit (+ push on demand). Reuses `dart_rss`-compatible output conventions and the existing `OpmlService` patterns for feed metadata.
 7. **Global hotkeys (`HotkeyService`)** — desktop-only global hotkey (e.g. summon library search window) on Windows/macOS/Linux; brings the app forward from background/tray, fuzzy-filters `library/` + `subscriptions/`, Enter copies/expands. No mobile equivalent in v1.
 8. **Quick-expand (`ExpandBridge`)** — one-tap/keystroke path from a selected prompt to the active consumer: copy rendered prompt to clipboard with `{{variables}}` substituted (prompted inline for missing values), plus paste-assist where the OS allows; full-text/WebView stack is irrelevant here — expansion output is plain text. Version stamp included in expanded footer for traceability.
+9. **Highlight-to-add (per-OS selected-text capture, macOS first; clipboard fallback)** — highlight text in any OS app, hit the add hotkey, and the selected text immediately appears in the Add-Prompt editor. Capture is per-OS native: macOS first via Accessibility `AXUIElement` selected-text (`kAXSelectedTextAttribute`, needs AX-trusted permission); Windows (UI Automation `TextPattern.GetSelection`) and Linux (X11 `PRIMARY` selection) later based on feasibility; Wayland is clipboard-only. The clipboard is the universal fallback — when native capture returns nothing, the add flow reads clipboard text instead. See `SelectionCaptureService` in `ARCHITECTURE.md` and D9 in `DECISIONS.md`.
 
 ## 4. Non-goals for v1
 

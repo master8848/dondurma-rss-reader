@@ -1,4 +1,24 @@
-<p align="center"><img src="assets/Logo.png" width="160" alt="Dondurma RSS Reader logo" /></p>
+> ## Fork note / Attribution
+>
+> This is a **fork** of the original **Dondurma RSS Reader** by
+> **[DevOpen-io](https://github.com/DevOpen-io/dondurma-rss-reader)** —
+> upstream: <https://github.com/DevOpen-io/dondurma-rss-reader>.
+> Original work © 2026 DevOpen, released under the [MIT License](LICENSE);
+> all app code in `lib/` and the platform folders is still upstream code
+> (no rewrite claimed).
+>
+> What this fork adds so far: promptlib vision/planning docs only
+> (`PROMPTLIB_VISION.md`, plus planning docs in
+> `/Volumes/hdd/saurav/code/promptlib/`). No app code has been changed.
+>
+> **Rebrand notice:** a rebrand to a prompt-management app (working name
+> *promptlib*, final name TBD) is planned. The package/app rename happens
+> later — this branch only prepares attribution for it. Upstream link and
+> license are preserved.
+>
+> ---
+>
+> <p align="center"><img src="assets/Logo.png" width="160" alt="Dondurma RSS Reader logo" /></p>
 
 # Dondurma RSS Reader
 
