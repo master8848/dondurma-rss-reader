@@ -11,6 +11,7 @@ import '../services/skills/skill_catalog_service.dart';
 import '../services/skills/skills_cache_service.dart';
 import '../utils/app_toast.dart';
 import '../widgets/constrained_width.dart';
+import '../widgets/open_in_button.dart';
 import '../widgets/skills/skill_row.dart';
 
 /// Skills catalog browser: multi-catalog search with audit badges, a saved
@@ -414,6 +415,11 @@ class _SkillDetailSheetState extends State<_SkillDetailSheet> {
   String? _checkpointMd;
   bool _loading = true;
 
+  /// On-disk cached folder for this skill (`<repo>/<skillPath>`), resolved
+  /// best-effort via the git folder cache. Null until resolved or when the
+  /// skill is not cached — the [OpenInButton] hides itself in that case.
+  String? _folderPath;
+
   @override
   void initState() {
     super.initState();
@@ -424,12 +430,33 @@ class _SkillDetailSheetState extends State<_SkillDetailSheet> {
     final provider = context.read<SkillsProvider>();
     final md = await provider.readSkillMd(widget.skill);
     final history = await provider.historyFor(widget.skill);
+    final folder = await _resolveFolder(provider);
     if (!mounted) return;
     setState(() {
       _md = md;
       _history = history;
+      _folderPath = folder;
       _loading = false;
     });
+  }
+
+  /// Resolves the saved on-disk folder for [Skill] via the git folder cache
+  /// (`ensureCached` + [Skill.skillPath]). Returns null when the skill is
+  /// not cached (offline / no git / no coordinates).
+  Future<String?> _resolveFolder(SkillsProvider provider) async {
+    try {
+      final dir = await provider.ensureCached(widget.skill);
+      if (dir == null || !await dir.exists()) return null;
+      final sub = widget.skill.skillPath.trim();
+      if (sub.isEmpty) return dir.path;
+      final folder = Directory(
+        '${dir.path}${Platform.pathSeparator}$sub',
+      );
+      if (!await folder.exists()) return null;
+      return folder.path;
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> _viewCheckpoint(SkillCheckpoint? cp) async {
@@ -501,6 +528,33 @@ class _SkillDetailSheetState extends State<_SkillDetailSheet> {
               ),
             ),
           const SizedBox(height: 12),
+          // ── Saved-folder "Open In" split button ────────────────────
+          // Visible only when the skill folder exists on disk (cached via
+          // git); hidden otherwise per the OpenInButton visibility rule.
+          if (_folderPath != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _folderPath!,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurface
+                            .withValues(alpha: 0.5),
+                        fontFamily: 'monospace',
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  OpenInButton(path: _folderPath),
+                ],
+              ),
+            ),
           // ── Version-history dropdown (folder checkpoints) ──────────
           if (_history.isNotEmpty)
             DropdownButtonFormField<SkillCheckpoint?>(

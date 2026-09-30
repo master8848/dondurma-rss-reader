@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import '../promptlib/git_service.dart';
 import '../promptlib/prompt_doc.dart';
 import '../promptlib/ui/library_controller.dart';
+import '../widgets/open_in_button.dart';
 import '../widgets/prompt_diff_view.dart';
 import 'add_prompt_screen.dart';
 
@@ -72,7 +73,14 @@ class _PromptDetailScreenState extends State<PromptDetailScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Prompt')),
+      appBar: AppBar(
+        title: const Text('Prompt'),
+        actions: [
+          // "Open In" split button — visible only when this prompt maps to
+          // a real file on disk (filePath set + exists), else hidden.
+          OpenInButton(path: widget.filePath, compact: true),
+        ],
+      ),
       body: FutureBuilder<PromptDoc?>(
         future: _doc,
         builder: (context, snapshot) {

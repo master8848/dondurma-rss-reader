@@ -18,6 +18,7 @@ import '../widgets/article/article_image_carousel.dart';
 import '../widgets/article/article_reading_mode_toggle.dart';
 import '../services/image_cache_service.dart';
 import '../utils/app_toast.dart';
+import '../widgets/open_in_button.dart';
 import 'dart:math' as math;
 
 const _articleTransitionSettleDelay = Duration(milliseconds: 380);
@@ -188,6 +189,29 @@ class _ArticlePageState extends State<_ArticlePage> {
   }
 
   // ---------------------------------------------------------------------------
+  // "Open In" — only when the article maps to a cached/local file.
+  // Remote http(s) articles have no on-disk file, so the split button
+  // hides itself via its visibility rule; `file://` links resolve to a
+  // real path and show the button.
+  // ---------------------------------------------------------------------------
+
+  /// Returns the on-disk path for [link] when it is a `file://` URL and
+  /// the file exists, else null (button stays hidden).
+  static String? _localPathFor(String link) {
+    final trimmed = link.trim();
+    if (trimmed.isEmpty) return null;
+    final uri = Uri.tryParse(trimmed);
+    if (uri == null || uri.scheme != 'file') return null;
+    try {
+      final path = uri.toFilePath();
+      if (path.isEmpty) return null;
+      return path;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Copy actions — plain-text helpers shared by both copy buttons
   // ---------------------------------------------------------------------------
 
@@ -349,6 +373,12 @@ class _ArticlePageState extends State<_ArticlePage> {
                       : null,
                   centerTitle: true,
                   actions: [
+                    // "Open In" split button — visible only when the article
+                    // maps to a cached/local file (file:// link), else hidden.
+                    OpenInButton(
+                      path: _localPathFor(widget.item.link),
+                      compact: true,
+                    ),
                     // Open in browser (icon only)
                     CircleActionButton(
                       icon: Icons.launch_rounded,
