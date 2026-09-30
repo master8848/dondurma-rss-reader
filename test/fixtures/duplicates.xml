@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Duplicate Feed</title>
+    <link>https://example.com/dups</link>
+    <description>Two entries share one guid; engine must dedupe.</description>
+    <item>
+      <title>Same Prompt</title>
+      <guid>dup-001</guid>
+      <link>https://example.com/dups/a</link>
+      <pubDate>Mon, 05 Jan 2026 12:00:00 GMT</pubDate>
+      <category>coding</category>
+      <description><![CDATA[<p>First copy.</p>]]></description>
+    </item>
+    <item>
+      <title>Same Prompt Again</title>
+      <guid>dup-001</guid>
+      <link>https://example.com/dups/a</link>
+      <pubDate>Mon, 05 Jan 2026 12:00:00 GMT</pubDate>
+      <category>coding</category>
+      <description><![CDATA[<p>Second copy, same guid.</p>]]></description>
+    </item>
+    <item>
+      <title>Unique Prompt</title>
+      <guid>dup-002</guid>
+      <link>https://example.com/dups/b</link>
+      <pubDate>Tue, 06 Jan 2026 12:00:00 GMT</pubDate>
+      <category>coding</category>
+      <description><![CDATA[<p>Distinct item.</p>]]></description>
+    </item>
+  </channel>
+</rss>

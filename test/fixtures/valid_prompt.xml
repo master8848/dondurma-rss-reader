@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  <channel>
+    <title>Example Prompts</title>
+    <link>https://example.com/prompts</link>
+    <description>A valid prompt feed with categories.</description>
+    <item>
+      <title>Code Review Prompt</title>
+      <guid>prompt-001</guid>
+      <link>https://example.com/prompts/code-review</link>
+      <pubDate>Mon, 05 Jan 2026 12:00:00 GMT</pubDate>
+      <category>coding</category>
+      <category>review</category>
+      <description><![CDATA[<p>Review this <b>code</b> carefully.</p>]]></description>
+    </item>
+    <item>
+      <title>Standup Writer</title>
+      <guid>prompt-002</guid>
+      <link>https://example.com/prompts/standup</link>
+      <pubDate>Tue, 06 Jan 2026 09:30:00 GMT</pubDate>
+      <category>writing</category>
+      <content:encoded><![CDATA[<p>Draft a <i>standup</i> update from these bullets.</p>]]></content:encoded>
+    </item>
+  </channel>
+</rss>

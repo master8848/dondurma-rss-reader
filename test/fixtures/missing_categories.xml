@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>No Categories Feed</title>
+    <link>https://example.com/nocats</link>
+    <description>Items carry no category tags; router must fall back.</description>
+    <item>
+      <title>Untagged One</title>
+      <guid>nocat-001</guid>
+      <link>https://example.com/nocats/1</link>
+      <pubDate>Mon, 05 Jan 2026 12:00:00 GMT</pubDate>
+      <description><![CDATA[<p>No tags here.</p>]]></description>
+    </item>
+    <item>
+      <title>Untagged Two</title>
+      <guid>nocat-002</guid>
+      <link>https://example.com/nocats/2</link>
+      <pubDate>Tue, 06 Jan 2026 12:00:00 GMT</pubDate>
+      <description><![CDATA[<p>Still no tags.</p>]]></description>
+    </item>
+  </channel>
+</rss>

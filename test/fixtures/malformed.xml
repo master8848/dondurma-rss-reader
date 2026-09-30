@@ -1,0 +1,4 @@
+This is not XML at all — just plain text pretending to be a feed.
+No rss/channel/feed envelope here, so the engine must skip it with a
+malformed diagnostic instead of throwing.
+<rss><channel><item><title>Unclosed and broken
