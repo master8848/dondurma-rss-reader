@@ -235,7 +235,7 @@ class LibraryController {
         final FeedConfigEntry prev = entries[at];
         entries[at] = FeedConfigEntry(
           url: prev.url,
-          name: (name == null || name.trim().isEmpty) ? prev.name : name!,
+          name: (name == null || name.trim().isEmpty) ? prev.name : name,
           type: type,
         );
       }

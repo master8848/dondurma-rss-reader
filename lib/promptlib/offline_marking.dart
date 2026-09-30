@@ -11,8 +11,6 @@
 /// like everything else under `lib/promptlib/`.
 library;
 
-import 'dart:io';
-
 import 'prompt_store.dart';
 
 /// True when [path] is a file under `<root>/subscriptions/`.
@@ -41,9 +39,3 @@ bool isOfflineFilePath(String? path, String root) {
 /// trailing/meta area) ONLY when the item is offline; NOTHING at all when
 /// not offline — no badge, no chip, no banner.
 bool showOfflineMarker({required bool isOffline}) => isOffline;
-
-/// Absolute on-disk dir holding subscription mirrors (`<root>/subscriptions`)
-/// — the offline folder. Provided for tests/UI that need the prefix without
-/// importing `dart:io` separator logic themselves.
-String subscriptionsDirFor(String root) =>
-    '$root${Platform.pathSeparator}${PromptStore.subscriptionsDirName}';

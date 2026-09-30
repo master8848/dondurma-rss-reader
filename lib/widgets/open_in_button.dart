@@ -84,7 +84,7 @@ class OpenInButton extends StatelessWidget {
     OpenInTarget current,
   ) {
     return [
-      for (final target in targetsFor('x'))
+      for (final target in OpenInTarget.values)
         PopupMenuItem(
           value: target,
           child: Row(
