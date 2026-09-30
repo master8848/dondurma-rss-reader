@@ -33,10 +33,18 @@ class ArticleScreen extends StatefulWidget {
   final List<FeedItem> items;
   final int initialIndex;
 
+  /// Resolves the on-disk prompt file for an article saved as a prompt
+  /// (`library/`, `prompts/<category>/`, or `subscriptions/<feed>/` via
+  /// `PromptStore.pathForId`). Null (default) means articles have no saved
+  /// prompt file — the "Open In" button then only shows for `file://`
+  /// links and stays hidden otherwise.
+  final String? Function(FeedItem item)? savedPromptPathFor;
+
   const ArticleScreen({
     super.key,
     required this.items,
     required this.initialIndex,
+    this.savedPromptPathFor,
   });
 
   @override
@@ -78,6 +86,7 @@ class _ArticleScreenState extends State<ArticleScreen> {
             currentIndex: index,
             totalCount: widget.items.length,
             isActive: index == _currentIndex,
+            savedPromptPathFor: widget.savedPromptPathFor,
           ),
         );
       },
@@ -95,12 +104,14 @@ class _ArticlePage extends StatefulWidget {
   final int currentIndex;
   final int totalCount;
   final bool isActive;
+  final String? Function(FeedItem item)? savedPromptPathFor;
 
   const _ArticlePage({
     required this.item,
     required this.currentIndex,
     required this.totalCount,
     required this.isActive,
+    this.savedPromptPathFor,
   });
 
   @override
@@ -189,10 +200,10 @@ class _ArticlePageState extends State<_ArticlePage> {
   }
 
   // ---------------------------------------------------------------------------
-  // "Open In" — only when the article maps to a cached/local file.
-  // Remote http(s) articles have no on-disk file, so the split button
-  // hides itself via its visibility rule; `file://` links resolve to a
-  // real path and show the button.
+  // "Open In" — when the article maps to a saved-prompt file on disk
+  // ([savedPromptPathFor], checked first) or a cached/local `file://` link.
+  // Remote http(s) articles with no saved prompt have no on-disk file, so
+  // the split button hides itself via its visibility rule.
   // ---------------------------------------------------------------------------
 
   /// Returns the on-disk path for [link] when it is a `file://` URL and
@@ -373,10 +384,14 @@ class _ArticlePageState extends State<_ArticlePage> {
                       : null,
                   centerTitle: true,
                   actions: [
-                    // "Open In" split button — visible only when the article
-                    // maps to a cached/local file (file:// link), else hidden.
+                    // "Open In" split button — visible when the article maps
+                    // to a saved-prompt file on disk (via savedPromptPathFor)
+                    // or a `file://` link; hidden otherwise by its own
+                    // visibility rule.
                     OpenInButton(
-                      path: _localPathFor(widget.item.link),
+                      path:
+                          widget.savedPromptPathFor?.call(widget.item) ??
+                          _localPathFor(widget.item.link),
                       compact: true,
                     ),
                     // Open in browser (icon only)

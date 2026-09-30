@@ -4,15 +4,28 @@ library;
 import 'package:flutter/material.dart';
 
 import '../promptlib/prompt_doc.dart';
+import 'open_in_button.dart';
 
 /// Compact row showing a [PromptDoc]: title, tag chips, source feed.
 /// Reuses the app's Material 3 list styling; navigation is left to the caller
 /// via [onTap] (ARCHITECTURE.md section 4 routes `/library/:id` can wrap it).
 class PromptListTile extends StatelessWidget {
   final PromptDoc doc;
+
+  /// Absolute on-disk file for this prompt (resolve via
+  /// `LibraryController.pathForId(doc.id)`). Saved prompts live in
+  /// `library/`, `prompts/<category>/`, or `subscriptions/<feed>/`, so this
+  /// resolves for every stored doc; the [OpenInButton] still hides itself
+  /// when [filePath] is null or missing on disk.
+  final String? filePath;
   final VoidCallback? onTap;
 
-  const PromptListTile({super.key, required this.doc, this.onTap});
+  const PromptListTile({
+    super.key,
+    required this.doc,
+    this.filePath,
+    this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -74,7 +87,16 @@ class PromptListTile extends StatelessWidget {
             ),
         ],
       ),
-      trailing: const Icon(Icons.chevron_right),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // "Open In" split button — every saved prompt maps to a file on
+          // disk (library/, prompts/<category>/, subscriptions/<feed>/);
+          // hidden by its own visibility rule when filePath is null/missing.
+          OpenInButton(path: filePath, compact: true),
+          const Icon(Icons.chevron_right),
+        ],
+      ),
       onTap: onTap,
     );
   }

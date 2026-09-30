@@ -71,6 +71,12 @@ class LibraryController {
   /// Returns the doc for [id], or `null` when unknown.
   Future<PromptDoc?> getById(String id) => store.getById(id);
 
+  /// Filesystem path of the latest file holding [id], or `null` when
+  /// unknown. Delegates to `PromptStore.pathForId` — the exact id-based
+  /// lookup (rename- and snapshot-proof), used by "Open In" buttons so
+  /// saved prompts resolve to their real file instead of staying hidden.
+  Future<String?> pathForId(String id) => store.pathForId(id);
+
   /// Writes [doc] to `library/<slug>.md` (rename-stable path).
   Future<PromptDoc> save(PromptDoc doc) => store.save(doc);
 

@@ -42,15 +42,34 @@ class PromptDetailScreen extends StatefulWidget {
 
 class _PromptDetailScreenState extends State<PromptDetailScreen> {
   Future<PromptDoc?>? _doc;
+  Future<String?>? _filePath;
   Future<List<CommitInfo>>? _history;
 
   @override
   void initState() {
     super.initState();
     _doc = widget.controller.getById(widget.promptId);
+    // Saved prompts always map to a file on disk (library/,
+    // prompts/<category>/, subscriptions/<feed>/): prefer the explicit
+    // [filePath], else resolve the exact id-based path via the store
+    // (rename- and snapshot-proof). History scopes to the same file.
+    _filePath = _resolveFilePath();
     final GitService? git = widget.git;
     if (git != null) {
-      _history = git.log(path: widget.filePath, limit: 20);
+      _history = _filePath!.then((String? p) => git.log(path: p, limit: 20));
+    }
+  }
+
+  /// Explicit `filePath` wins; otherwise the exact store lookup for this
+  /// prompt id. Never throws — unresolvable means "no file" (null), and the
+  /// [OpenInButton] hides itself.
+  Future<String?> _resolveFilePath() async {
+    final String? direct = widget.filePath;
+    if (direct != null && direct.trim().isNotEmpty) return direct;
+    try {
+      return await widget.controller.pathForId(widget.promptId);
+    } catch (_) {
+      return null;
     }
   }
 
@@ -76,9 +95,14 @@ class _PromptDetailScreenState extends State<PromptDetailScreen> {
       appBar: AppBar(
         title: const Text('Prompt'),
         actions: [
-          // "Open In" split button — visible only when this prompt maps to
-          // a real file on disk (filePath set + exists), else hidden.
-          OpenInButton(path: widget.filePath, compact: true),
+          // "Open In" split button — unified on the resolved file path
+          // (explicit filePath, else the store id lookup); visible only
+          // when it maps to a real file on disk, else hidden.
+          FutureBuilder<String?>(
+            future: _filePath,
+            builder: (context, snapshot) =>
+                OpenInButton(path: snapshot.data, compact: true),
+          ),
         ],
       ),
       body: FutureBuilder<PromptDoc?>(
