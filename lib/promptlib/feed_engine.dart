@@ -247,13 +247,13 @@ class FeedEngine {
     required PromptStore store,
     FeedConfig config = const FeedConfig(),
     FeedTransport? transport,
-    RouterRules rules = const RouterRules(),
+    RouterRules? rules,
     FolderCacheRules cacheRules = const FolderCacheRules(),
     this.maxBodyChars = 50000,
   })  : _store = store,
         _config = config,
         _transport = transport ?? const IoFeedTransport(),
-        _rules = rules,
+        _rules = rules ?? RouterRules(),
         _cacheRules = cacheRules {
     // Propagate the initial registry so PromptStore.listLocal(type:)
     // resolves subscription folders (setFeedType keeps this in sync after).
