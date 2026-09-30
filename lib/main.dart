@@ -12,6 +12,7 @@ import 'l10n/app_localizations.dart';
 import 'l10n/supported_languages.dart';
 import 'providers/feed_provider.dart';
 import 'providers/settings_provider.dart';
+import 'providers/skills_provider.dart';
 import 'providers/subscription_provider.dart';
 import 'providers/bookmark_provider.dart';
 import 'theme/app_theme.dart';
@@ -87,6 +88,7 @@ void main() async {
         ChangeNotifierProvider(create: (_) => SettingsProvider()),
         ChangeNotifierProvider(create: (_) => SubscriptionProvider()),
         ChangeNotifierProvider(create: (_) => BookmarkProvider()),
+        ChangeNotifierProvider(create: (_) => SkillsProvider()),
         ChangeNotifierProxyProvider3<
           SubscriptionProvider,
           SettingsProvider,

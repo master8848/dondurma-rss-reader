@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:cached_network_image_ce/cached_network_image.dart';
@@ -187,6 +188,62 @@ class _ArticlePageState extends State<_ArticlePage> {
   }
 
   // ---------------------------------------------------------------------------
+  // Copy actions — plain-text helpers shared by both copy buttons
+  // ---------------------------------------------------------------------------
+
+  /// Strips HTML tags/entities down to readable plain text.
+  static String _plainText(String html) {
+    var text = html
+        .replaceAll(RegExp(r'<script[^>]*>.*?</script>', dotAll: true), ' ')
+        .replaceAll(RegExp(r'<style[^>]*>.*?</style>', dotAll: true), ' ')
+        .replaceAll(RegExp(r'<[^>]+>'), ' ')
+        .replaceAll(RegExp(r'[ \t\x0B\f\r]+'), ' ');
+    const entities = {
+      '&amp;': '&',
+      '&lt;': '<',
+      '&gt;': '>',
+      '&quot;': '"',
+      '&#39;': "'",
+      '&nbsp;': ' ',
+    };
+    entities.forEach((k, v) => text = text.replaceAll(k, v));
+    return text.trim();
+  }
+
+  /// Copies title + link + plain-text body to the clipboard.
+  Future<void> _copyArticle(BuildContext context, String bodyHtml) async {
+    final item = widget.item;
+    final buffer = StringBuffer(item.title);
+    if (item.link.isNotEmpty) buffer.write('\n${item.link}');
+    final body = _plainText(
+      bodyHtml.isNotEmpty ? bodyHtml : item.content ?? item.description,
+    );
+    if (body.isNotEmpty) buffer.write('\n\n$body');
+    await Clipboard.setData(ClipboardData(text: buffer.toString()));
+    if (context.mounted) {
+      showAppToast('Article copied to clipboard', type: AppToastType.success);
+    }
+  }
+
+  /// Copies the article formatted as an LLM prompt to the clipboard.
+  Future<void> _copyPrompt(BuildContext context, String bodyHtml) async {
+    final item = widget.item;
+    final body = _plainText(
+      bodyHtml.isNotEmpty ? bodyHtml : item.content ?? item.description,
+    );
+    final prompt =
+        'Title: ${item.title}\n'
+        '${item.link.isNotEmpty ? 'Source: ${item.link}\n' : ''}'
+        '\n$body\n'
+        '\n---\n'
+        'Use the article above as context.';
+    await Clipboard.setData(ClipboardData(text: prompt));
+    if (context.mounted) {
+      showAppToast('Prompt copied to clipboard', type: AppToastType.success);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Build
   // ---------------------------------------------------------------------------
 
@@ -318,6 +375,20 @@ class _ArticlePageState extends State<_ArticlePage> {
                         },
                         tooltip: l10n.shareArticle,
                       ),
+                    // Copy article (title + link + plain text)
+                    CircleActionButton(
+                      icon: Icons.content_copy_rounded,
+                      onPressed: () =>
+                          _copyArticle(context, provider.displayContent),
+                      tooltip: 'Copy article',
+                    ),
+                    // Copy as LLM prompt
+                    CircleActionButton(
+                      icon: Icons.psychology_outlined,
+                      onPressed: () =>
+                          _copyPrompt(context, provider.displayContent),
+                      tooltip: 'Copy prompt',
+                    ),
                     const SizedBox(width: 4),
                   ],
                   flexibleSpace: hasHero
