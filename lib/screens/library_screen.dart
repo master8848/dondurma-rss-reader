@@ -235,9 +235,22 @@ class _LibraryScreenState extends State<LibraryScreen> {
               return Column(
                 children: [
                   for (final PromptDoc doc in docs)
-                    PromptListTile(
-                      doc: doc,
-                      onTap: () => _openDetail(doc.id),
+                    FutureBuilder<PromptRowData>(
+                      future: widget.controller.rowDataFor(doc.id),
+                      builder: (context, snapshot) => PromptListTile(
+                        doc: doc,
+                        // Saved prompts (library/, prompts/<category>/,
+                        // subscriptions/<feed>/ mirrors) resolve to a real
+                        // file; the button hides itself when unresolvable.
+                        filePath: snapshot.data?.path,
+                        // Offline (subscriptions-scope) rows get the tiny
+                        // inline marker; nothing renders otherwise.
+                        isOffline: snapshot.data?.isOffline ?? false,
+                        // Sync verdict chip (memoized, best-effort): renders
+                        // nothing until a check reports newer either side.
+                        syncState: snapshot.data?.syncState,
+                        onTap: () => _openDetail(doc.id),
+                      ),
                     ),
                 ],
               );

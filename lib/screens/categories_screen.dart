@@ -10,6 +10,7 @@ import '../utils/app_toast.dart';
 import '../widgets/folders/feed_action_sheet.dart';
 import '../widgets/folders/folder_dialogs.dart';
 import '../widgets/constrained_width.dart';
+import '../widgets/open_in_button.dart';
 
 /// Screen for managing feed categories (folders) and their subscriptions.
 ///
@@ -532,6 +533,20 @@ class _FeedRow extends StatelessWidget {
     }
   }
 
+  /// On-disk path for this row when the feed URL is a `file://` reference
+  /// to a real local file. Remote http(s) feeds return null, so the
+  /// [OpenInButton] below stays hidden per its visibility rule.
+  static String? _localPathFor(String url) {
+    final uri = Uri.tryParse(url.trim());
+    if (uri == null || uri.scheme != 'file') return null;
+    try {
+      final path = uri.toFilePath();
+      return path.isEmpty ? null : path;
+    } catch (_) {
+      return null;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -568,6 +583,9 @@ class _FeedRow extends StatelessWidget {
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                // Split button — visible only when the row maps to a real
+                // file on disk (file:// feed URL), else hidden.
+                OpenInButton(path: _localPathFor(sub.url), compact: true),
                 if (sub.notificationsEnabled)
                   Icon(
                     Icons.notifications_active_outlined,

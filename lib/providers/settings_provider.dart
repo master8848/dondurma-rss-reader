@@ -4,6 +4,7 @@ import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:workmanager/workmanager.dart';
 
 import '../services/background_fetch_service.dart';
+import '../services/open_in_service.dart';
 
 /// Manages global application settings with Hive persistence.
 ///
@@ -48,6 +49,9 @@ class SettingsProvider extends ChangeNotifier {
   // Full-text extraction
   bool _autoFullText = false;
 
+  // "Open In" split-button default (Hive key 'openInDefault', enum name)
+  OpenInTarget _openInDefault = OpenInTarget.reveal;
+
   // ---------------------------------------------------------------------------
   // Getters
   // ---------------------------------------------------------------------------
@@ -80,6 +84,10 @@ class SettingsProvider extends ChangeNotifier {
   String get browserMode => _browserMode;
 
   bool get autoFullText => _autoFullText;
+
+  /// Remembered "Open In" split-button default. Persisted as the enum name
+  /// under the Hive `'settings'` key `'openInDefault'`; defaults to `reveal`.
+  OpenInTarget get openInDefault => _openInDefault;
 
   // ---------------------------------------------------------------------------
   // Hive box accessor
@@ -175,6 +183,12 @@ class SettingsProvider extends ChangeNotifier {
 
     // Full-text extraction
     _autoFullText = _box.get('autoFullText', defaultValue: false);
+
+    // "Open In" default (unknown stored names fall back to reveal)
+    _openInDefault = openInTargetFromName(
+      _box.get('openInDefault', defaultValue: OpenInTarget.reveal.name)
+          as String?,
+    );
 
     notifyListeners();
   }
@@ -318,6 +332,14 @@ class SettingsProvider extends ChangeNotifier {
     _autoFullText = value;
     notifyListeners();
     await _box.put('autoFullText', value);
+  }
+
+  /// Remembers the "Open In" split-button default (menu picks call this
+  /// before executing, so the main button updates on the next render).
+  Future<void> setOpenInDefault(OpenInTarget target) async {
+    _openInDefault = target;
+    notifyListeners();
+    await _box.put('openInDefault', target.name);
   }
 
   /// Adds a search query to the history.

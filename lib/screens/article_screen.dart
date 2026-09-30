@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:cached_network_image_ce/cached_network_image.dart';
@@ -17,6 +18,7 @@ import '../widgets/article/article_image_carousel.dart';
 import '../widgets/article/article_reading_mode_toggle.dart';
 import '../services/image_cache_service.dart';
 import '../utils/app_toast.dart';
+import '../widgets/open_in_button.dart';
 import 'dart:math' as math;
 
 const _articleTransitionSettleDelay = Duration(milliseconds: 380);
@@ -31,10 +33,18 @@ class ArticleScreen extends StatefulWidget {
   final List<FeedItem> items;
   final int initialIndex;
 
+  /// Resolves the on-disk prompt file for an article saved as a prompt
+  /// (`library/`, `prompts/<category>/`, or `subscriptions/<feed>/` via
+  /// `PromptStore.pathForId`). Null (default) means articles have no saved
+  /// prompt file — the "Open In" button then only shows for `file://`
+  /// links and stays hidden otherwise.
+  final String? Function(FeedItem item)? savedPromptPathFor;
+
   const ArticleScreen({
     super.key,
     required this.items,
     required this.initialIndex,
+    this.savedPromptPathFor,
   });
 
   @override
@@ -76,6 +86,7 @@ class _ArticleScreenState extends State<ArticleScreen> {
             currentIndex: index,
             totalCount: widget.items.length,
             isActive: index == _currentIndex,
+            savedPromptPathFor: widget.savedPromptPathFor,
           ),
         );
       },
@@ -93,12 +104,14 @@ class _ArticlePage extends StatefulWidget {
   final int currentIndex;
   final int totalCount;
   final bool isActive;
+  final String? Function(FeedItem item)? savedPromptPathFor;
 
   const _ArticlePage({
     required this.item,
     required this.currentIndex,
     required this.totalCount,
     required this.isActive,
+    this.savedPromptPathFor,
   });
 
   @override
@@ -184,6 +197,85 @@ class _ArticlePageState extends State<_ArticlePage> {
       adBlockEnabled: adBlock,
       browserMode: browserMode,
     );
+  }
+
+  // ---------------------------------------------------------------------------
+  // "Open In" — when the article maps to a saved-prompt file on disk
+  // ([savedPromptPathFor], checked first) or a cached/local `file://` link.
+  // Remote http(s) articles with no saved prompt have no on-disk file, so
+  // the split button hides itself via its visibility rule.
+  // ---------------------------------------------------------------------------
+
+  /// Returns the on-disk path for [link] when it is a `file://` URL and
+  /// the file exists, else null (button stays hidden).
+  static String? _localPathFor(String link) {
+    final trimmed = link.trim();
+    if (trimmed.isEmpty) return null;
+    final uri = Uri.tryParse(trimmed);
+    if (uri == null || uri.scheme != 'file') return null;
+    try {
+      final path = uri.toFilePath();
+      if (path.isEmpty) return null;
+      return path;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Copy actions — plain-text helpers shared by both copy buttons
+  // ---------------------------------------------------------------------------
+
+  /// Strips HTML tags/entities down to readable plain text.
+  static String _plainText(String html) {
+    var text = html
+        .replaceAll(RegExp(r'<script[^>]*>.*?</script>', dotAll: true), ' ')
+        .replaceAll(RegExp(r'<style[^>]*>.*?</style>', dotAll: true), ' ')
+        .replaceAll(RegExp(r'<[^>]+>'), ' ')
+        .replaceAll(RegExp(r'[ \t\x0B\f\r]+'), ' ');
+    const entities = {
+      '&amp;': '&',
+      '&lt;': '<',
+      '&gt;': '>',
+      '&quot;': '"',
+      '&#39;': "'",
+      '&nbsp;': ' ',
+    };
+    entities.forEach((k, v) => text = text.replaceAll(k, v));
+    return text.trim();
+  }
+
+  /// Copies title + link + plain-text body to the clipboard.
+  Future<void> _copyArticle(BuildContext context, String bodyHtml) async {
+    final item = widget.item;
+    final buffer = StringBuffer(item.title);
+    if (item.link.isNotEmpty) buffer.write('\n${item.link}');
+    final body = _plainText(
+      bodyHtml.isNotEmpty ? bodyHtml : item.content ?? item.description,
+    );
+    if (body.isNotEmpty) buffer.write('\n\n$body');
+    await Clipboard.setData(ClipboardData(text: buffer.toString()));
+    if (context.mounted) {
+      showAppToast('Article copied to clipboard', type: AppToastType.success);
+    }
+  }
+
+  /// Copies the article formatted as an LLM prompt to the clipboard.
+  Future<void> _copyPrompt(BuildContext context, String bodyHtml) async {
+    final item = widget.item;
+    final body = _plainText(
+      bodyHtml.isNotEmpty ? bodyHtml : item.content ?? item.description,
+    );
+    final prompt =
+        'Title: ${item.title}\n'
+        '${item.link.isNotEmpty ? 'Source: ${item.link}\n' : ''}'
+        '\n$body\n'
+        '\n---\n'
+        'Use the article above as context.';
+    await Clipboard.setData(ClipboardData(text: prompt));
+    if (context.mounted) {
+      showAppToast('Prompt copied to clipboard', type: AppToastType.success);
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -292,6 +384,16 @@ class _ArticlePageState extends State<_ArticlePage> {
                       : null,
                   centerTitle: true,
                   actions: [
+                    // "Open In" split button — visible when the article maps
+                    // to a saved-prompt file on disk (via savedPromptPathFor)
+                    // or a `file://` link; hidden otherwise by its own
+                    // visibility rule.
+                    OpenInButton(
+                      path:
+                          widget.savedPromptPathFor?.call(widget.item) ??
+                          _localPathFor(widget.item.link),
+                      compact: true,
+                    ),
                     // Open in browser (icon only)
                     CircleActionButton(
                       icon: Icons.launch_rounded,
@@ -318,6 +420,20 @@ class _ArticlePageState extends State<_ArticlePage> {
                         },
                         tooltip: l10n.shareArticle,
                       ),
+                    // Copy article (title + link + plain text)
+                    CircleActionButton(
+                      icon: Icons.content_copy_rounded,
+                      onPressed: () =>
+                          _copyArticle(context, provider.displayContent),
+                      tooltip: 'Copy article',
+                    ),
+                    // Copy as LLM prompt
+                    CircleActionButton(
+                      icon: Icons.psychology_outlined,
+                      onPressed: () =>
+                          _copyPrompt(context, provider.displayContent),
+                      tooltip: 'Copy prompt',
+                    ),
                     const SizedBox(width: 4),
                   ],
                   flexibleSpace: hasHero

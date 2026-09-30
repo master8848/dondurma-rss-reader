@@ -19,6 +19,7 @@ import '../widgets/constrained_width.dart';
 import 'categories_screen.dart';
 import 'bookmarks_screen.dart';
 import 'settings_screen.dart';
+import 'skills_screen.dart';
 
 /// Main screen with bottom navigation bar hosting Feeds, Folders, Bookmarks,
 /// and Settings tabs. The Feeds tab includes a search bar, unread filter,
@@ -298,6 +299,8 @@ class _HomeScreenState extends State<HomeScreen> {
           return l10n.bookmarksTab;
         case 3:
           return l10n.settingsTab;
+        case 4:
+          return 'Skills';
         case 0:
         default:
           return p.selectedCategory ?? l10n.myFeeds;
@@ -449,6 +452,8 @@ class _HomeScreenState extends State<HomeScreen> {
           ? const CategoriesScreen()
           : _selectedIndex == 2
           ? const BookmarksScreen()
+          : _selectedIndex == 4
+          ? const SkillsScreen()
           : const SettingsScreen(),
       bottomNavigationBar: Padding(
         padding: EdgeInsets.fromLTRB(
@@ -558,6 +563,16 @@ class _HomeScreenState extends State<HomeScreen> {
                           label: l10n.settingsTab,
                           selected: _selectedIndex == 3,
                           onTap: () => _onItemTapped(3),
+                        ),
+                      ),
+                      Expanded(
+                        child: NavBarItem(
+                          icon: _selectedIndex == 4
+                              ? Icons.psychology
+                              : Icons.psychology_outlined,
+                          label: 'Skills',
+                          selected: _selectedIndex == 4,
+                          onTap: () => _onItemTapped(4),
                         ),
                       ),
                     ],

@@ -8,6 +8,7 @@ import '../promptlib/ui/library_controller.dart';
 import '../screens/home_screen.dart';
 import '../screens/article_screen.dart';
 import '../screens/debug_screen.dart';
+import '../screens/skills_screen.dart';
 import '../screens/library_screen.dart';
 import '../screens/prompt_detail_screen.dart';
 import '../screens/onboarding_screen.dart';
@@ -22,9 +23,10 @@ final rootNavigatorKey = GlobalKey<NavigatorState>();
 /// Application route configuration.
 ///
 /// Routes:
-/// - `/`        → [HomeScreen] (bottom nav with Feeds / Folders / Bookmarks / Settings)
+/// - `/`        → [HomeScreen] (bottom nav with Feeds / Folders / Bookmarks / Settings / Skills)
 /// - `/article` → [ArticleScreen] (expects a [FeedItem] via `state.extra`)
 /// - `/debug`   → [DebugScreen] (hidden developer utilities)
+/// - `/skills`  → [SkillsStandaloneRoute] (standalone skills catalog browser)
 /// - `/library`     → [LibraryScreen] (prompt library browser over [LibraryController])
 /// - `/library/:id` → [PromptDetailScreen] (single prompt + history entry point)
 final appRouter = GoRouter(
@@ -76,6 +78,10 @@ final appRouter = GoRouter(
     ),
     GoRoute(path: '/debug', builder: (context, state) => const DebugScreen()),
     GoRoute(
+      path: '/skills',
+      builder: (context, state) => const SkillsStandaloneRoute(),
+    ),
+    GoRoute(
       path: '/library',
       builder: (context, state) => const _LibraryRoute(),
     ),
@@ -88,6 +94,20 @@ final appRouter = GoRouter(
     ),
   ],
 );
+
+/// Deep-linkable `/skills` entry: standalone scaffold hosting the same
+/// [SkillsScreen] shown as the 5th bottom-nav tab on `/`.
+class SkillsStandaloneRoute extends StatelessWidget {
+  const SkillsStandaloneRoute({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Skills')),
+      body: const SkillsScreen(),
+    );
+  }
+}
 
 /// Builds an initialized [LibraryController] rooted at the app-documents
 /// `promptlib` folder (`<docs>/promptlib`, holding `library/`,

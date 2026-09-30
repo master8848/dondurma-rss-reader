@@ -354,7 +354,7 @@ class FeedEngine {
     final FeedType type = getType(feedUrl);
     final String slug = (feedSlug == null || feedSlug.trim().isEmpty)
         ? slugifyTitle(
-            (name == null || name.trim().isEmpty) ? feedUrl : name!,
+            (name == null || name.trim().isEmpty) ? feedUrl : name,
           )
         : slugifyTitle(feedSlug);
     final List<FeedDiagnostic> issues = <FeedDiagnostic>[];
