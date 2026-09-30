@@ -20,6 +20,7 @@ import '../feed_config.dart';
 import '../feed_engine.dart';
 import '../prompt_doc.dart';
 import '../prompt_store.dart';
+import '../repo_mapping.dart';
 
 /// Thin UI-facing controller. Create, call [init], then use [list]/[save].
 class LibraryController {
@@ -33,7 +34,14 @@ class LibraryController {
     required this.store,
     required this.libraryRoot,
     this.engine,
-  });
+    RepoRegistry? repoRegistry,
+  }) {
+    if (repoRegistry != null) store.repoRegistry = repoRegistry;
+  }
+
+  /// Category→repo registry passthrough to `store.resolveCategoryDir`.
+  set repoRegistry(RepoRegistry? value) => store.repoRegistry = value;
+  RepoRegistry? get repoRegistry => store.repoRegistry;
 
   /// Current feed registry (loaded by [init], kept in sync by [setFeedType]).
   FeedConfig get feedConfig => _config;

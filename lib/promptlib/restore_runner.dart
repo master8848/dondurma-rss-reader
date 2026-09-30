@@ -9,11 +9,12 @@
 /// ([conflict_resolve.dart] keeps both sides in sibling `.bak` files, so
 /// resolution never silently overwrites data).
 ///
-/// Registry binding: [RepoInfo] is a minimal local stand-in
+/// Registry binding: [RepoInfo] is a minimal local snapshot
 /// (`{repoId, remoteUrl, localPath, defaultBranch}`).
-/// TODO: bind [RepoInfo] to the real RepoMapping once the parallel
-/// repo-mapping worker lands it (replace [RestoreRunner.repos] source;
-/// keep the field names so call sites do not change).
+/// Build it from the real RepoMapping via [RestoreRunner.fromRegistry]
+/// (maps [RepoRegistry.allRepos], resolving relative localPaths against
+/// the registry root); the field names stay stable so call sites that
+/// already hand-build [RepoInfo] lists keep working.
 ///
 /// Safety contract (mirrors `git_service.dart`):
 /// * never force-pushes, hard-resets, rewrites history, or deletes user
@@ -31,11 +32,13 @@ import 'dart:io';
 import 'front_matter.dart' as fm;
 import 'git_service.dart';
 import 'prompt_store.dart';
+import 'repo_mapping.dart';
 
 /// Minimal registry entry: which remote backs which local checkout.
 ///
-/// Stand-in for the future RepoMapping entry (parallel worker owns that
-/// file). An empty [remoteUrl] means "disabled / no binding": the runner
+/// Mirrors [RepoRecord] field-for-field (see [RestoreRunner.fromRegistry]);
+/// constructible directly for tests/callers without a registry.
+/// An empty [remoteUrl] means "disabled / no binding": the runner
 /// skips the repo entirely and never touches [localPath].
 class RepoInfo {
   /// Stable id used in per-repo statuses (e.g. a category or feed slug).
@@ -260,6 +263,48 @@ class RestoreRunner {
                   workingDirectory: dir,
                   gitBinary: gitBinary,
                 ));
+
+  /// Adapter from the real repo mapping: one [RepoInfo] per
+  /// [RepoRegistry.allRepos], with relative `localPath`s resolved against
+  /// `rootOverride ?? registry.root` (absolute paths kept as-is). No
+  /// behavior change — the runner still operates over [repos].
+  factory RestoreRunner.fromRegistry(
+    RepoRegistry registry, {
+    String? rootOverride,
+    String gitBinary = 'git',
+    GitServiceFactory? gitServices,
+  }) {
+    final String? root = rootOverride ?? registry.root;
+    final List<RepoInfo> infos = registry.allRepos
+        .map((RepoRecord r) => RepoInfo(
+              repoId: r.repoId,
+              remoteUrl: r.remoteUrl,
+              localPath: _resolveLocalPath(r.localPath, root),
+              defaultBranch: r.defaultBranch,
+            ))
+        .toList();
+    return RestoreRunner(
+      repos: infos,
+      gitBinary: gitBinary,
+      gitServices: gitServices,
+    );
+  }
+
+  /// Resolves a [RepoRecord.localPath] to an absolute checkout dir, mirroring
+  /// [RepoRegistry.joinRepoPath] for the no-`pathInRepo` case.
+  static String _resolveLocalPath(String localPath, String? root) {
+    final String p = localPath.trim();
+    if (p.startsWith('/') ||
+        p.startsWith('\\') ||
+        RegExp(r'^[A-Za-z]:[\\/]').hasMatch(p)) {
+      return p;
+    }
+    if (root == null || root.trim().isEmpty) return p;
+    final String r = root.endsWith(Platform.pathSeparator)
+        ? root.substring(0, root.length - 1)
+        : root;
+    return '$r${Platform.pathSeparator}$p';
+  }
 
   bool? _availableCache;
 
