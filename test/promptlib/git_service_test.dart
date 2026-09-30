@@ -321,4 +321,87 @@ void main() {
           await File('${repo.path}/library/note.md').readAsString(), 'v1');
     });
   });
+
+  group('commit identity fallback (Q6)', () {
+    test('isMissingIdentityError detects git identity failures', () {
+      expect(
+        ProcessGitService.isMissingIdentityError(
+            'Author identity unknown\n*** Please tell me who you are.'),
+        isTrue,
+      );
+      expect(
+        ProcessGitService.isMissingIdentityError(
+            'Unable to auto-detect email address (got \'dev@.\')'),
+        isTrue,
+      );
+      expect(
+        ProcessGitService.isMissingIdentityError('empty ident name'),
+        isTrue,
+      );
+      expect(
+        ProcessGitService.isMissingIdentityError(
+            'PLEASE TELL ME WHO YOU ARE'),
+        isTrue,
+      );
+      expect(
+        ProcessGitService.isMissingIdentityError(
+            'nothing to commit, working tree clean'),
+        isFalse,
+      );
+      expect(
+        ProcessGitService.isMissingIdentityError(
+            'error: failed to push some refs'),
+        isFalse,
+      );
+      expect(ProcessGitService.isMissingIdentityError(''), isFalse);
+    });
+
+    test('flush falls back to Prompt RSS identity with no git config',
+        () async {
+      final Directory repo = await mkTemp('promptlib_git_noident_');
+      // Plain init with NO user.name/user.email (local or otherwise).
+      await _git(['init', '-b', 'main'], repo.path);
+      await _git(['config', 'commit.gpgsign', 'false'], repo.path);
+      // Isolate global/system config so the commit cannot see the
+      // developer's own identity. GIT_CONFIG_COUNT injects an empty
+      // user.name (same "Author identity unknown / empty ident" failure
+      // git reports when no usable identity exists): without it, git
+      // would silently auto-detect an identity from the OS user database
+      // (getpwuid + hostname) and the fallback would never trigger.
+      // Command-line -c flags still override it, so the fallback rescues
+      // the commit; repo-local config stays untouched (no user.name set).
+      final Directory fakeHome =
+          await mkTemp('promptlib_git_fakehome_');
+      final Map<String, String> isolatedEnv = <String, String>{
+        'HOME': fakeHome.path,
+        'XDG_CONFIG_HOME': fakeHome.path,
+        'GIT_CONFIG_NOSYSTEM': '1',
+        'GIT_CONFIG_GLOBAL': '/dev/null',
+        'GIT_CONFIG_SYSTEM': '/dev/null',
+        'GIT_CONFIG_COUNT': '1',
+        'GIT_CONFIG_KEY_0': 'user.name',
+        'GIT_CONFIG_VALUE_0': '',
+      };
+      final ProcessGitService s = ProcessGitService(
+        workingDirectory: repo.path,
+        debounce: const Duration(minutes: 1),
+        environment: isolatedEnv,
+      );
+      services.add(s);
+      await Directory('${repo.path}/library').create();
+      await File('${repo.path}/library/note.md').writeAsString('hello');
+      await s.autoCommit('promptlib: save note.md');
+      await s.flush(); // must succeed via the -c fallback, not throw
+      final List<CommitInfo> entries = await s.log();
+      expect(entries, hasLength(1));
+      expect(entries.single.author, contains('Prompt RSS'));
+      // Fallback never writes config: no local identity was created.
+      final ProcessResult localName = await _git(
+        ['config', '--local', 'user.name'],
+        repo.path,
+        expectOk: false,
+      );
+      expect(localName.exitCode, isNot(0));
+    });
+  });
 }
