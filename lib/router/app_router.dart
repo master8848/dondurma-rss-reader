@@ -1,9 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hive_ce/hive.dart';
+import 'package:path_provider/path_provider.dart';
+import '../promptlib/git_service.dart';
+import '../promptlib/prompt_store.dart';
+import '../promptlib/ui/library_controller.dart';
 import '../screens/home_screen.dart';
 import '../screens/article_screen.dart';
 import '../screens/debug_screen.dart';
+import '../screens/library_screen.dart';
+import '../screens/prompt_detail_screen.dart';
 import '../screens/onboarding_screen.dart';
 import '../models/feed_item.dart';
 import 'onboarding_state.dart';
@@ -19,6 +25,8 @@ final rootNavigatorKey = GlobalKey<NavigatorState>();
 /// - `/`        → [HomeScreen] (bottom nav with Feeds / Folders / Bookmarks / Settings)
 /// - `/article` → [ArticleScreen] (expects a [FeedItem] via `state.extra`)
 /// - `/debug`   → [DebugScreen] (hidden developer utilities)
+/// - `/library`     → [LibraryScreen] (prompt library browser over [LibraryController])
+/// - `/library/:id` → [PromptDetailScreen] (single prompt + history entry point)
 final appRouter = GoRouter(
   navigatorKey: rootNavigatorKey,
   observers: [appToastRouteObserver],
@@ -67,5 +75,107 @@ final appRouter = GoRouter(
       },
     ),
     GoRoute(path: '/debug', builder: (context, state) => const DebugScreen()),
+    GoRoute(
+      path: '/library',
+      builder: (context, state) => const _LibraryRoute(),
+    ),
+    GoRoute(
+      path: '/library/:id',
+      builder: (context, state) {
+        final String id = state.pathParameters['id'] ?? '';
+        return _PromptDetailRoute(promptId: id);
+      },
+    ),
   ],
 );
+
+/// Builds an initialized [LibraryController] rooted at the app-documents
+/// `promptlib` folder (`<docs>/promptlib`, holding `library/`,
+/// `subscriptions/`, `.promptlib/`).
+///
+/// A fresh controller is built per navigation: cheap (file scan + YAML load)
+/// and avoids sharing store/git lifecycle with the widget tree.
+Future<_LibraryBackend> _initLibraryBackend() async {
+  final dir = await getApplicationDocumentsDirectory();
+  final String root = '${dir.path}/promptlib';
+  final git = ProcessGitService(workingDirectory: root);
+  final store = PromptStore(git: git);
+  final controller = LibraryController(store: store, libraryRoot: root);
+  await controller.init();
+  return _LibraryBackend(controller: controller, git: git);
+}
+
+class _LibraryBackend {
+  final LibraryController controller;
+  final ProcessGitService git;
+  const _LibraryBackend({required this.controller, required this.git});
+}
+
+/// Route entry for `/library`: initializes the backend, then shows
+/// [LibraryScreen]. Shows a spinner while initializing and a plain error
+/// when the folder cannot be prepared (never crashes).
+class _LibraryRoute extends StatelessWidget {
+  const _LibraryRoute();
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<_LibraryBackend>(
+      future: _initLibraryBackend(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+        if (snapshot.hasError || !snapshot.hasData) {
+          return Scaffold(
+            appBar: AppBar(title: const Text('Library')),
+            body: Center(
+              child: Text('Library unavailable: ${snapshot.error}'),
+            ),
+          );
+        }
+        final backend = snapshot.data!;
+        return LibraryScreen(
+          controller: backend.controller,
+          git: backend.git,
+        );
+      },
+    );
+  }
+}
+
+/// Route entry for `/library/:id`: initializes the backend, then shows
+/// [PromptDetailScreen] for [promptId].
+class _PromptDetailRoute extends StatelessWidget {
+  final String promptId;
+  const _PromptDetailRoute({required this.promptId});
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<_LibraryBackend>(
+      future: _initLibraryBackend(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+        if (snapshot.hasError || !snapshot.hasData) {
+          return Scaffold(
+            appBar: AppBar(title: const Text('Prompt')),
+            body: Center(
+              child: Text('Library unavailable: ${snapshot.error}'),
+            ),
+          );
+        }
+        final backend = snapshot.data!;
+        return PromptDetailScreen(
+          controller: backend.controller,
+          promptId: promptId,
+          git: backend.git,
+        );
+      },
+    );
+  }
+}
