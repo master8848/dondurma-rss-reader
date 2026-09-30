@@ -5,6 +5,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 
 import '../models/skill.dart';
+import '../promptlib/version_ux.dart';
 import '../providers/skills_provider.dart';
 import '../providers/subscription_provider.dart';
 import '../services/skills/skill_catalog_service.dart';
@@ -12,6 +13,8 @@ import '../services/skills/skills_cache_service.dart';
 import '../utils/app_toast.dart';
 import '../widgets/constrained_width.dart';
 import '../widgets/open_in_button.dart';
+import '../widgets/prompt_diff_view.dart';
+import '../widgets/sync_state_chip.dart';
 import '../widgets/skills/skill_row.dart';
 
 /// Skills catalog browser: multi-catalog search with audit badges, a saved
@@ -338,12 +341,18 @@ class _SavedSkillsGroup extends StatelessWidget {
         ...saved.map(
           (skill) => Column(
             children: [
-              SkillRow(
-                skill: skill,
-                saved: true,
-                onTap: () => onOpen(skill),
-                onRemove: () =>
-                    context.read<SkillsProvider>().removeSkill(skill.id),
+              FutureBuilder<ItemSyncState>(
+                future: context
+                    .read<SkillsProvider>()
+                    .checkSkillState(skill),
+                builder: (context, snapshot) => SkillRow(
+                  skill: skill,
+                  saved: true,
+                  syncState: snapshot.data,
+                  onTap: () => onOpen(skill),
+                  onRemove: () =>
+                      context.read<SkillsProvider>().removeSkill(skill.id),
+                ),
               ),
               const Divider(height: 1),
             ],
@@ -415,6 +424,11 @@ class _SkillDetailSheetState extends State<_SkillDetailSheet> {
   String? _checkpointMd;
   bool _loading = true;
 
+  /// Tri-state verdict for this saved skill (memoized in the provider;
+  /// best-effort, never blocks the sheet).
+  Future<ItemSyncState>? _syncState;
+  bool _syncBusy = false;
+
   /// On-disk cached folder for this skill (`<repo>/<skillPath>`), resolved
   /// best-effort via the git folder cache. Null until resolved or when the
   /// skill is not cached — the [OpenInButton] hides itself in that case.
@@ -436,6 +450,7 @@ class _SkillDetailSheetState extends State<_SkillDetailSheet> {
       _md = md;
       _history = history;
       _folderPath = folder;
+      _syncState = provider.checkSkillState(widget.skill);
       _loading = false;
     });
   }
@@ -470,6 +485,97 @@ class _SkillDetailSheetState extends State<_SkillDetailSheet> {
         .openCheckpoint(widget.skill, cp.sha);
     if (!mounted) return;
     setState(() => _checkpointMd = md ?? '(file absent at this checkpoint)');
+  }
+
+  void _refreshSync({bool force = false}) {
+    setState(() {
+      _syncState =
+          context.read<SkillsProvider>().checkSkillState(widget.skill, force: force);
+    });
+  }
+
+  /// Takes the latest source into the folder cache, then offers the
+  /// before/after diff. Never dead-ends: offline or uncached skills toast
+  /// plainly and stay on their saved copy.
+  Future<void> _updateSkill() async {
+    setState(() => _syncBusy = true);
+    try {
+      final provider = context.read<SkillsProvider>();
+      final ({String? before, String? after}) diff =
+          await provider.fetchUpdateDiff(widget.skill);
+      if (!mounted) return;
+      _refreshSync(force: true);
+      // Reload the shown SKILL.md + history from the fresh cache.
+      final md = await provider.readSkillMd(widget.skill);
+      final history = await provider.historyFor(widget.skill);
+      if (!mounted) return;
+      setState(() {
+        _md = md;
+        _history = history;
+        _selected = null;
+        _checkpointMd = null;
+      });
+      if ((diff.before ?? '').isEmpty || (diff.after ?? '').isEmpty) {
+        showAppToast('Updated to the latest source', type: AppToastType.success);
+        return;
+      }
+      if (diff.before == diff.after) {
+        showAppToast('Already up to date', type: AppToastType.info);
+        return;
+      }
+      if (!mounted) return;
+      await showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        builder: (_) => DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.85,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          builder: (context, scrollController) => ListView(
+            controller: scrollController,
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+            children: [
+              const Text(
+                'What changed',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Latest source vs your previous copy.',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.6),
+                ),
+              ),
+              const SizedBox(height: 12),
+              PromptDiffView(
+                oldText: diff.before!,
+                newText: diff.after!,
+              ),
+            ],
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _syncBusy = false);
+    }
+  }
+
+  Future<void> _keepMine() async {
+    setState(() => _syncBusy = true);
+    try {
+      await context.read<SkillsProvider>().keepSkillMine(widget.skill);
+      if (!mounted) return;
+      showAppToast('Kept your copy', type: AppToastType.success);
+      _refreshSync(force: true);
+    } finally {
+      if (mounted) setState(() => _syncBusy = false);
+    }
   }
 
   @override
@@ -528,6 +634,14 @@ class _SkillDetailSheetState extends State<_SkillDetailSheet> {
               ),
             ),
           const SizedBox(height: 12),
+          // ── Sync verdict banner (tri-state + one-tap actions) ──────
+          _SyncBanner(
+            syncState: _syncState,
+            busy: _syncBusy,
+            onCheckAgain: () => _refreshSync(force: true),
+            onUpdate: _updateSkill,
+            onKeepMine: _keepMine,
+          ),
           // ── Saved-folder "Open In" split button ────────────────────
           // Visible only when the skill folder exists on disk (cached via
           // git); hidden otherwise per the OpenInButton visibility rule.
@@ -613,6 +727,108 @@ class _SkillDetailSheetState extends State<_SkillDetailSheet> {
             ),
         ],
       ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Sync verdict banner: tri-state badge + one-tap actions for saved skills.
+// ---------------------------------------------------------------------------
+
+/// Banner resolving [_SkillDetailSheetState._syncState] into a badge plus
+/// the actions that make sense per state:
+///
+/// * Update available — Update (fetch latest, then offer the what-changed
+///   diff) + Keep mine (dismiss until the source moves again).
+/// * Edited here — quiet badge (the folder cache holds local changes).
+/// * Up to date — quiet badge.
+/// * Not checked yet — Check again (best-effort re-check).
+///
+/// Renders nothing while the verdict is still loading.
+class _SyncBanner extends StatelessWidget {
+  final Future<ItemSyncState>? syncState;
+  final bool busy;
+  final VoidCallback onCheckAgain;
+  final VoidCallback onUpdate;
+  final VoidCallback onKeepMine;
+
+  const _SyncBanner({
+    required this.syncState,
+    required this.busy,
+    required this.onCheckAgain,
+    required this.onUpdate,
+    required this.onKeepMine,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<ItemSyncState>(
+      future: syncState,
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const SizedBox.shrink();
+        final ItemSyncState state = snapshot.data!;
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Theme.of(context)
+                .colorScheme
+                .surfaceContainerHighest
+                .withValues(alpha: 0.5),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  SyncStateChip(state: state, showUnknown: true),
+                  const Spacer(),
+                  if (busy)
+                    const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  else if (state == ItemSyncState.unknown)
+                    TextButton(
+                      onPressed: onCheckAgain,
+                      child: const Text('Check again'),
+                    )
+                  else if (state == ItemSyncState.remoteNewer)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        TextButton(
+                          onPressed: onKeepMine,
+                          child: const Text('Keep mine'),
+                        ),
+                        const SizedBox(width: 4),
+                        FilledButton(
+                          onPressed: onUpdate,
+                          child: const Text('Update'),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  state.detail,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withValues(alpha: 0.65),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

@@ -4,7 +4,9 @@ library;
 import 'package:flutter/material.dart';
 
 import '../promptlib/prompt_doc.dart';
+import '../promptlib/version_ux.dart';
 import 'open_in_button.dart';
+import 'sync_state_chip.dart';
 
 /// Compact row showing a [PromptDoc]: title, tag chips, source feed.
 /// Reuses the app's Material 3 list styling; navigation is left to the caller
@@ -24,6 +26,11 @@ class PromptListTile extends StatelessWidget {
   /// Shows a very small inline offline glyph in the trailing area; when
   /// false NOTHING is rendered (no badge, no chip, no banner).
   final bool isOffline;
+
+  /// Local-vs-remote verdict (resolve via
+  /// `LibraryController.syncStateFor(doc.id)`). Renders a small [SyncStateChip]
+  /// under the subtitle; `null` or [ItemSyncState.unknown] renders nothing.
+  final ItemSyncState? syncState;
   final VoidCallback? onTap;
 
   const PromptListTile({
@@ -31,6 +38,7 @@ class PromptListTile extends StatelessWidget {
     required this.doc,
     this.filePath,
     this.isOffline = false,
+    this.syncState,
     this.onTap,
   });
 
@@ -91,6 +99,11 @@ class PromptListTile extends StatelessWidget {
                 'Needs review (recovered id)',
                 style: TextStyle(color: cs.error, fontSize: 12),
               ),
+            ),
+          if (syncState != null && syncState != ItemSyncState.unknown)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: SyncStateChip(state: syncState!),
             ),
         ],
       ),

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
 
 import '../models/skill.dart';
+import '../promptlib/version_ux.dart';
 import '../services/skills/skill_audit_service.dart';
 import '../services/skills/skill_catalog_service.dart';
 import '../services/skills/skills_cache_service.dart';
@@ -25,6 +26,12 @@ class SkillsProvider extends ChangeNotifier {
   static const String defaultCategory = 'Skills';
   static const String _historyKey = 'skillSearchHistory';
   static const String _savedKey = 'savedSkills';
+  static const String _baselinesKey = 'skillBaselines';
+
+  /// How long a skill verdict is reused without re-checking remote HEAD.
+  /// Remote fetches only happen in [checkSkillState] after expiry (or
+  /// `force: true`); list rows stay cheap and the UI never blocks.
+  static const Duration checkTtl = Duration(minutes: 15);
 
   final SkillCatalogService _catalog;
   final SkillAuditService _audit;
@@ -39,6 +46,14 @@ class SkillsProvider extends ChangeNotifier {
   SkillCatalogFilter _filter = SkillCatalogFilter.all;
   bool _isSearching = false;
   String _lastQuery = '';
+
+  /// Acknowledged SHAs per saved skill id ("keep mine" records the pinned
+  /// SHA as agreed; a later remote HEAD flags "Update available" afresh).
+  /// Persisted in the `'settings'` box under [_baselinesKey].
+  Map<String, String> _skillBaselines = {};
+
+  /// Memoized verdicts per saved skill id (see [checkTtl]).
+  final Map<String, ({ItemSyncState state, DateTime at})> _skillChecks = {};
 
   SkillsProvider({SkillCatalogService? catalog, SkillAuditService? audit})
     : _catalog = catalog ?? SkillCatalogService(),
@@ -193,6 +208,152 @@ class SkillsProvider extends ChangeNotifier {
     );
   }
 
+  /// Fetches the latest remote state for [skill] into its folder cache
+  /// (`fetch` + `reset --hard`, like the pre-existing update path) and
+  /// re-checks the verdict. Returns false when there is nothing to update
+  /// from (no coordinates / no cache / offline). Never throws.
+  Future<bool> updateSkill(Skill skill) async {
+    final cache = _cache;
+    final repoUrl = repoUrlFor(skill);
+    if (cache == null || repoUrl == null) return false;
+    try {
+      await cache.ensure(
+        repoUrl,
+        ref: skill.ref.isEmpty ? 'HEAD' : skill.ref,
+        sparsePaths: skill.skillPath.isEmpty ? const [] : [skill.skillPath],
+        update: true,
+      );
+    } catch (_) {
+      return false;
+    }
+    _skillChecks.remove(skill.id);
+    notifyListeners();
+    return true;
+  }
+
+  /// Tri-state local-vs-remote verdict for a saved [skill], backed by commit
+  /// SHAs (cached pin vs remote HEAD) plus a dirty-tree check:
+  ///
+  /// * Up to date — pinned SHA matches remote HEAD.
+  /// * Edited here — the cached checkout has uncommitted changes, or the pin
+  ///   moved on from the acknowledged baseline while offline.
+  /// * Update available — remote HEAD moved on from the pin/baseline.
+  /// * Not checked yet — no coordinates / not cached / offline (degrades
+  ///   gracefully, never throws, never blocks: the check is memoized for
+  ///   [checkTtl]).
+  Future<ItemSyncState> checkSkillState(
+    Skill skill, {
+    bool force = false,
+  }) async {
+    final DateTime now = DateTime.now().toUtc();
+    final cached = _skillChecks[skill.id];
+    if (!force &&
+        cached != null &&
+        now.difference(cached.at) < checkTtl) {
+      return cached.state;
+    }
+    ItemSyncState state = ItemSyncState.unknown;
+    try {
+      state = await _computeSkillState(skill);
+    } catch (_) {
+      state = ItemSyncState.unknown;
+    }
+    _skillChecks[skill.id] = (state: state, at: now);
+    return state;
+  }
+
+  /// Keeps the local copy: records the currently pinned SHA as the agreed
+  /// baseline, clearing "Update available" until remote HEAD actually moves
+  /// again. Best-effort and silent when there is nothing pinned.
+  Future<void> keepSkillMine(Skill skill) async {
+    final cache = _cache;
+    final repoUrl = repoUrlFor(skill);
+    if (cache == null || repoUrl == null) return;
+    try {
+      final SkillRepoMeta? meta = await cache.readMeta(
+        repoUrl,
+        ref: skill.ref.isEmpty ? 'HEAD' : skill.ref,
+      );
+      final String sha = meta?.commitSha.trim() ?? '';
+      if (sha.isEmpty) return;
+      _skillBaselines[skill.id] = sha;
+      await _box.put(_baselinesKey, _skillBaselines);
+    } catch (_) {
+      // Baseline persistence must never break the keep flow.
+    }
+    _skillChecks.remove(skill.id);
+    notifyListeners();
+  }
+
+  /// Captures the before/after `SKILL.md` bodies around an [updateSkill] so
+  /// the UI can show what changed. Either side may be null (not cached /
+  /// file absent); the update itself still proceeds. Never throws.
+  Future<({String? before, String? after})> fetchUpdateDiff(
+    Skill skill,
+  ) async {
+    String? before;
+    try {
+      before = await readSkillMd(skill);
+    } catch (_) {
+      before = null;
+    }
+    await updateSkill(skill);
+    String? after;
+    try {
+      after = await readSkillMd(skill);
+    } catch (_) {
+      after = null;
+    }
+    return (before: before, after: after);
+  }
+
+  Future<ItemSyncState> _computeSkillState(Skill skill) async {
+    final SkillsCacheService? cache = _cache;
+    final String? repoUrl = repoUrlFor(skill);
+    if (cache == null || repoUrl == null) return ItemSyncState.unknown;
+    final String ref = skill.ref.isEmpty ? 'HEAD' : skill.ref;
+    final Directory? dir = cache.repoDirFor(repoUrl, ref: ref);
+    if (dir == null || !await dir.exists()) {
+      return ItemSyncState.unknown;
+    }
+    // Local edits first: a dirty checkout is "edited here" regardless of
+    // what the remote says.
+    bool? dirty;
+    try {
+      dirty = await cache.isSkillDirty(repoUrl, skill.skillPath, ref: ref);
+    } catch (_) {
+      dirty = null;
+    }
+    if (dirty == true) return ItemSyncState.localNewer;
+    String localSha = '';
+    try {
+      localSha = (await cache.readMeta(repoUrl, ref: ref))?.commitSha.trim() ?? '';
+    } catch (_) {
+      localSha = '';
+    }
+    // Remote HEAD best-effort: offline / auth / timeout all degrade to null
+    // (unknown), never to an exception.
+    String? remoteSha;
+    try {
+      remoteSha = await cache.remoteHeadSha(repoUrl, ref: ref);
+    } catch (_) {
+      remoteSha = null;
+    }
+    return determineSyncState(
+      localHash: localSha.isEmpty ? null : localSha,
+      baseHash: _skillBaselines[skill.id] ?? _shaish(skill.version),
+      remoteHash: remoteSha,
+    );
+  }
+
+  /// Uses [Skill.version] as a baseline only when it looks like a commit
+  /// SHA (short or full hex); catalog versions like `1.2.3` are not SHAs.
+  static String? _shaish(String version) {
+    final String v = version.trim();
+    if (RegExp(r'^[0-9a-f]{7,40}$').hasMatch(v)) return v;
+    return null;
+  }
+
   /// Reads the checked-out `SKILL.md` body for [skill], or null when the
   /// skill is not cached (offline / no git / no coordinates).
   Future<String?> readSkillMd(Skill skill) async {
@@ -274,6 +435,17 @@ class SkillsProvider extends ChangeNotifier {
             ?.map((e) => e.toString())
             .toList() ??
         [];
+    try {
+      final raw = _box.get(_baselinesKey) as Map<dynamic, dynamic>?;
+      _skillBaselines = raw == null
+          ? <String, String>{}
+          : <String, String>{
+              for (final MapEntry<dynamic, dynamic> e in raw.entries)
+                e.key.toString(): e.value.toString(),
+            };
+    } catch (_) {
+      _skillBaselines = {};
+    }
     try {
       final raw = _box.get(_savedKey) as List<dynamic>?;
       _savedSkills =

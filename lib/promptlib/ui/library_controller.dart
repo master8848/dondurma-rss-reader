@@ -21,6 +21,15 @@ import '../feed_engine.dart';
 import '../prompt_doc.dart';
 import '../prompt_store.dart';
 import '../repo_mapping.dart';
+import '../version_ux.dart';
+
+/// Row data for one prompt id: resolved file path + offline state + sync
+/// verdict, fetched together so list rows need a single future.
+typedef PromptRowData = ({
+  String? path,
+  bool isOffline,
+  ItemSyncState syncState,
+});
 
 /// Thin UI-facing controller. Create, call [init], then use [list]/[save].
 class LibraryController {
@@ -87,6 +96,102 @@ class LibraryController {
   /// calls. See `PromptStore.fileStateFor`.
   Future<({String? path, bool isOffline})> fileStateFor(String id) =>
       store.fileStateFor(id);
+
+  PromptSyncTracker? _syncTracker;
+
+  /// Tri-state tracker over [store] (journal at
+  /// `<libraryRoot>/.promptlib/sync_baselines.json`). Lazy: the journal
+  /// loads on first use. Constructing the tracker wires the store's
+  /// mirror-write hook, so feed refreshes move the recorded remote hash.
+  Future<PromptSyncTracker> _sync() async {
+    final PromptSyncTracker? ready = _syncTracker;
+    if (ready != null) return ready;
+    final BaselineJournal journal = await BaselineJournal.load(
+      '$libraryRoot${Platform.pathSeparator}.promptlib'
+      '${Platform.pathSeparator}sync_baselines.json',
+    );
+    final PromptSyncTracker tracker = PromptSyncTracker(
+      store: store,
+      journal: journal,
+      engine: engine,
+    );
+    _syncTracker = tracker;
+    return tracker;
+  }
+
+  /// Tri-state verdict for [id] (memoized ~15 min; `force` recomputes).
+  /// Never throws — failures degrade to [ItemSyncState.unknown].
+  Future<ItemSyncState> syncStateFor(String id, {bool force = false}) async {
+    try {
+      final PromptSyncTracker tracker = await _sync();
+      final PromptSyncSnapshot snap = await tracker.check(id, force: force);
+      return snap.state;
+    } catch (_) {
+      return ItemSyncState.unknown;
+    }
+  }
+
+  /// Full snapshot for [id] (verdict + local/remote docs). Never throws —
+  /// returns an unknown snapshot on failure so banners always have
+  /// something to render.
+  Future<PromptSyncSnapshot> syncSnapshotFor(
+    String id, {
+    bool force = false,
+  }) async {
+    try {
+      return await (await _sync()).check(id, force: force);
+    } catch (_) {
+      return PromptSyncSnapshot(id: id, state: ItemSyncState.unknown);
+    }
+  }
+
+  /// Row data for [id]: resolved path + offline state + sync verdict in one
+  /// future for list rows. Never throws (unknown verdict on failure).
+  Future<PromptRowData> rowDataFor(String id) async {
+    final ({String? path, bool isOffline}) file = await fileStateFor(id);
+    final ItemSyncState state = await syncStateFor(id);
+    return (path: file.path, isOffline: file.isOffline, syncState: state);
+  }
+
+  /// Takes the source version for [id] (Update action). Returns the saved
+  /// doc, or `null` when there is nothing to take. Never throws.
+  Future<PromptDoc?> takeSyncUpdate(String id) async {
+    try {
+      return await (await _sync()).takeUpdate(id);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Keeps the local copy for [id] (Keep-mine action): clears the badge
+  /// until the source actually moves again. Never throws.
+  Future<void> keepSyncMine(String id) async {
+    try {
+      await (await _sync()).keepMine(id);
+    } catch (_) {
+      // Dismissal must never fail the UI.
+    }
+  }
+
+  /// Source-vs-mine bodies for [id] for the diff view (`null` when either
+  /// side is missing). Never throws.
+  Future<({String oldText, String newText})?> syncDiffFor(String id) async {
+    try {
+      return await (await _sync()).diffTexts(id);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Best-effort fresh fetch of [id]'s source feed, then a re-check (Check-
+  /// for-updates action). Never throws.
+  Future<ItemSyncState> refreshSourceFor(String id) async {
+    try {
+      return (await (await _sync()).refreshAndCheck(id)).state;
+    } catch (_) {
+      return ItemSyncState.unknown;
+    }
+  }
 
   /// Writes [doc] to `library/<slug>.md` (rename-stable path).
   Future<PromptDoc> save(PromptDoc doc) => store.save(doc);

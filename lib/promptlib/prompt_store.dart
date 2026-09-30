@@ -45,6 +45,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'content_hash.dart';
 import 'feed_config.dart';
 import 'front_matter.dart' as fm;
 import 'git_service.dart';
@@ -124,6 +125,14 @@ class PromptStore {
   final GitService? _git;
   FeedConfig _feedConfig = const FeedConfig();
   RepoRegistry? _repoRegistry;
+
+  /// Fired after [materializeSubscribedItem] writes a mirror file — and only
+  /// then (local `saveInPlace` edits and identical-refresh skips never fire
+  /// it). Sync/version tracking hooks in here to record the feed-side hash,
+  /// which is what lets "the source moved" be told apart from "you edited
+  /// the offline copy". Never throws out of the store: hook errors are
+  /// swallowed so a tracking failure cannot break a refresh.
+  void Function(String id, String contentHash)? onMirrorWrite;
 
   String? _libraryRoot;
   Map<String, List<String>> _duplicateIds = const {};
@@ -731,6 +740,11 @@ class PromptStore {
     }
     await File(target).writeAsString(fm.serialize(doc));
     await _scan();
+    try {
+      onMirrorWrite?.call(id, syncHash(doc));
+    } catch (_) {
+      // Tracking must never break a refresh.
+    }
     return doc;
   }
 

@@ -328,6 +328,56 @@ class SkillsCacheService {
     }
   }
 
+  /// Best-effort remote HEAD for [repoUrl] at [ref], without touching the
+  /// working tree (`git ls-remote`, read-only). Returns the SHA, or null
+  /// when offline / unparsable / timed out. This is the "is the website
+  /// newer" signal for saved skills: compare against the cached pin
+  /// ([SkillRepoMeta.commitSha]) — never blocks UI, callers cache the check.
+  Future<String?> remoteHeadSha(
+    String repoUrl, {
+    String ref = 'HEAD',
+    Duration timeout = const Duration(seconds: 15),
+  }) async {
+    final String want = ref.trim().isEmpty ? 'HEAD' : ref.trim();
+    try {
+      final ProcessResult result =
+          await _git(['ls-remote', repoUrl, want]).timeout(timeout);
+      if (result.exitCode != 0) return null;
+      for (final String line in (result.stdout as String).split('\n')) {
+        final String sha = line.split(RegExp(r'\s+')).first.trim();
+        if (RegExp(r'^[0-9a-f]{40}$').hasMatch(sha)) return sha;
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Best-effort dirty check: true when the cached checkout has uncommitted
+  /// changes under [skillPath] (the "edited locally" signal for saved
+  /// skills), false when clean, null when unknown (not cached / git failed).
+  /// Read-only — never touches the working tree.
+  Future<bool?> isSkillDirty(
+    String repoUrl,
+    String skillPath, {
+    String ref = 'HEAD',
+  }) async {
+    final dir = repoDirFor(repoUrl, ref: ref);
+    if (dir == null || !await dir.exists()) return null;
+    final String scope =
+        skillPath.trim().isEmpty ? '.' : skillPath.trim();
+    try {
+      final ProcessResult result = await _git(
+        ['status', '--porcelain', '--', scope],
+        workingDirectory: dir.path,
+      );
+      if (result.exitCode != 0) return null;
+      return (result.stdout as String).trim().isNotEmpty;
+    } catch (_) {
+      return null;
+    }
+  }
+
   // -------------------------------------------------------------------------
   // Internals
   // -------------------------------------------------------------------------

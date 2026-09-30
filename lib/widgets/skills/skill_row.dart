@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../models/skill.dart';
+import '../../promptlib/version_ux.dart';
+import '../sync_state_chip.dart';
 
 /// Single search-result / saved-skill row.
 ///
@@ -15,6 +17,11 @@ class SkillRow extends StatelessWidget {
   final VoidCallback? onRemove;
   final VoidCallback? onTap;
 
+  /// Local-vs-remote verdict for saved skills (resolve via
+  /// `SkillsProvider.checkSkillState(skill.id)`). Renders a small chip next
+  /// to the audit badge; `null` or [ItemSyncState.unknown] renders nothing.
+  final ItemSyncState? syncState;
+
   const SkillRow({
     super.key,
     required this.skill,
@@ -22,6 +29,7 @@ class SkillRow extends StatelessWidget {
     this.onSave,
     this.onRemove,
     this.onTap,
+    this.syncState,
   });
 
   @override
@@ -70,6 +78,11 @@ class SkillRow extends StatelessWidget {
                         verdict: skill.audit,
                         reason: skill.auditReason,
                       ),
+                      if (syncState != null &&
+                          syncState != ItemSyncState.unknown) ...[
+                        const SizedBox(width: 6),
+                        SyncStateChip(state: syncState!),
+                      ],
                     ],
                   ),
                   const SizedBox(height: 2),

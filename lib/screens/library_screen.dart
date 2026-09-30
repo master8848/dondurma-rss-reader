@@ -235,8 +235,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
               return Column(
                 children: [
                   for (final PromptDoc doc in docs)
-                    FutureBuilder<({String? path, bool isOffline})>(
-                      future: widget.controller.fileStateFor(doc.id),
+                    FutureBuilder<PromptRowData>(
+                      future: widget.controller.rowDataFor(doc.id),
                       builder: (context, snapshot) => PromptListTile(
                         doc: doc,
                         // Saved prompts (library/, prompts/<category>/,
@@ -246,6 +246,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
                         // Offline (subscriptions-scope) rows get the tiny
                         // inline marker; nothing renders otherwise.
                         isOffline: snapshot.data?.isOffline ?? false,
+                        // Sync verdict chip (memoized, best-effort): renders
+                        // nothing until a check reports newer either side.
+                        syncState: snapshot.data?.syncState,
                         onTap: () => _openDetail(doc.id),
                       ),
                     ),

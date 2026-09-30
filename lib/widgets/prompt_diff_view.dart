@@ -187,7 +187,7 @@ class PromptDiffView extends StatelessWidget {
       color: background,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
       child: SelectableText(
-        text.isEmpty ? ' ',
+        text.isEmpty ? ' ' : text,
         style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
       ),
     );
