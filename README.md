@@ -1,8 +1,67 @@
-<p align="center"><img src="assets/Logo.png" width="160" alt="Dondurma RSS Reader logo" /></p>
+> ## Fork note / Attribution
+>
+> This is a **fork** of the original **Dondurma RSS Reader** by
+> **[DevOpen-io](https://github.com/DevOpen-io/dondurma-rss-reader)** —
+> upstream: <https://github.com/DevOpen-io/dondurma-rss-reader>.
+> Original work © 2026 DevOpen, released under the [MIT License](LICENSE);
+> all app code in `lib/` and the platform folders is still upstream code
+> (no rewrite claimed).
+>
+> What this fork adds: Prompt RSS prompt-management layers on top of the
+> upstream reader — local prompt library (`library/` Markdown + YAML front
+> matter), subscribed-item mirror (`subscriptions/<feed>/`), feed registry
+> (`.promptlib/feeds.yaml`), Git versioning/sync via system-`git` shell-out,
+> global hotkeys + clipboard/selected-text capture, and one-tap prompt
+> expansion. All app code in `lib/` and the platform folders outside
+> `lib/promptlib/`, `lib/screens/library_screen.dart`,
+> `lib/screens/prompt_detail_screen.dart`, `lib/screens/add_prompt_screen.dart`,
+> and `lib/router/app_router.dart` library routes is still upstream code
+> (no rewrite claimed).
+>
+> **Rebrand notice:** a rebrand to a prompt-management app (working name
+> *promptlib*, final name TBD) is planned. The package/app rename happens
+> later — this branch only prepares attribution for it. Upstream link and
+> license are preserved.
+>
+> ---
+>
+> <p align="center"><img src="assets/Logo.png" width="160" alt="Dondurma RSS Reader logo" /></p>
 
-# Dondurma RSS Reader
+# Prompt RSS
 
-Fast, private RSS/Atom reader built with Flutter and Material 3. No accounts, algorithms, analytics, or ads. Your feeds, your device.
+Personal prompt-management app, forked from Dondurma RSS Reader by
+[DevOpen-io](https://github.com/DevOpen-io/dondurma-rss-reader).
+Fast, private, local-first: your prompts live as plain Markdown files you own
+(`library/`), versioned with Git and synced via Git push/pull. The Dondurma
+RSS/Atom reader underneath (Material 3, offline cache, background sync)
+powers feed subscriptions for prompts and articles alike.
+
+## Scope
+
+- **In scope:** local prompt library browsing/editing, Git auto-commit +
+  push/pull sync + history/revert + conflict resolution (keep-mine /
+  keep-theirs / keep-both), feed subscriptions materialized as Markdown,
+  global hotkeys, highlight-to-add (selection capture with clipboard
+  fallback), one-tap prompt expansion with `{{variable}}` substitution.
+- **Out of scope (descoped): no RSS publishing.** The app does not generate
+  or serve RSS feeds; distribution/sync is Git push/pull + Git management
+  only (see `DECISIONS.md` D12 in `/Volumes/hdd/saurav/code/promptlib/`).
+  Mobile builds (Android/iOS) are also out of scope for v1 — desktop
+  (Windows/macOS/Linux) only.
+
+## Branches
+
+| Branch | Workstream |
+|---|---|
+| `promptlib/wp1-core` | Core library: PromptDoc, front matter, PromptStore, GitService, feed config |
+| `promptlib/wp2-feed` | Feed engine: type-aware fetch/parse + Markdown materializer |
+| `promptlib/wp5-git` | Git push/manage flow: sync, history, conflict resolution |
+| `promptlib/wp4-ui` | UI shell: Library / Prompt detail / Add-prompt screens |
+| `promptlib/wp6-keys` | Shortcuts: hotkeys, selection capture, clipboard fallback |
+| `promptlib/wp7-expand` | Quick expand: ExpandBridge variable substitution + clipboard |
+| `promptlib/integration` | Integration of all workstreams (this branch) |
+
+## Dondurma RSS Reader (upstream baseline)
 
 [English](#english) · [Türkçe](#türkçe)
 
@@ -44,7 +103,10 @@ Five `ChangeNotifier` providers power UI state. `FeedProvider` receives subscrip
 
 ### Development
 
-Requires Flutter compatible with Dart `^3.11.0`.
+Requires Flutter compatible with Dart `^3.11.0`. A Flutter SDK is required;
+this environment ships only the Dart SDK (no `flutter` binary), so
+`flutter pub get` / `flutter test` / `flutter run` must be run on a machine
+with Flutter installed.
 
 ```bash
 git clone https://github.com/DevOpen-io/Dondurma-Rss-Reader.git

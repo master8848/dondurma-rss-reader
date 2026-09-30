@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../l10n/app_localizations.dart';
 import '../models/feed_item.dart';
@@ -348,6 +349,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.library_books_outlined),
+            tooltip: 'Library',
+            onPressed: () => context.push('/library'),
+          ),
           if (_selectedIndex == 0) ...[
             if (!_isSearching)
               IconButton(
